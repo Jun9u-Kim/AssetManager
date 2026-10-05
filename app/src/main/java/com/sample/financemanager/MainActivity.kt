@@ -5,6 +5,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -21,14 +23,23 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -40,11 +51,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -56,11 +71,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -89,10 +113,23 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+enum class MainTab(
+    val title: String,
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector,
+) {
+    HOME("홈", Icons.Filled.Home, Icons.Outlined.Home),
+    STATS("통계/차트", Icons.Filled.BarChart, Icons.Outlined.BarChart),
+    SETTINGS("설정", Icons.Filled.Settings, Icons.Outlined.Settings),
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FinanceManagerApp(viewModel: MainViewModel = viewModel()) {
     val records by viewModel.records.collectAsStateWithLifecycle()
+    val allRecords by viewModel.allRecords.collectAsStateWithLifecycle()
+
+    var currentTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var recordToDelete by remember { mutableStateOf<FinanceRecord?>(null) }
@@ -104,7 +141,11 @@ fun FinanceManagerApp(viewModel: MainViewModel = viewModel()) {
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = "자산 관리",
+                        text = when (currentTab) {
+                            MainTab.HOME -> "자산 관리"
+                            MainTab.STATS -> "통계 및 차트"
+                            MainTab.SETTINGS -> "설정"
+                        },
                         fontWeight = FontWeight.Bold,
                     )
                 },
@@ -114,16 +155,37 @@ fun FinanceManagerApp(viewModel: MainViewModel = viewModel()) {
                 ),
             )
         },
+        bottomBar = {
+            NavigationBar {
+                MainTab.entries.forEach { tab ->
+                    NavigationBarItem(
+                        selected = currentTab == tab,
+                        onClick = { currentTab = tab },
+                        icon = {
+                            Icon(
+                                imageVector = if (currentTab == tab) tab.selectedIcon else tab.unselectedIcon,
+                                contentDescription = tab.title,
+                            )
+                        },
+                        label = {
+                            Text(text = tab.title)
+                        },
+                    )
+                }
+            }
+        },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "자산 내역 추가",
-                )
+            if (currentTab == MainTab.HOME) {
+                FloatingActionButton(
+                    onClick = { showAddDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "자산 내역 추가",
+                    )
+                }
             }
         },
     ) { innerPadding ->
@@ -132,14 +194,29 @@ fun FinanceManagerApp(viewModel: MainViewModel = viewModel()) {
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            if (records.isEmpty()) {
-                EmptyStateView()
-            } else {
-                FinanceRecordList(
-                    records = records,
-                    onEdit = { record -> assetToEdit = record },
-                    onDelete = { record -> recordToDelete = record },
-                )
+            when (currentTab) {
+                MainTab.HOME -> {
+                    if (records.isEmpty()) {
+                        EmptyStateView()
+                    } else {
+                        FinanceRecordList(
+                            records = records,
+                            onEdit = { record -> assetToEdit = record },
+                            onDelete = { record -> recordToDelete = record },
+                        )
+                    }
+                }
+                MainTab.STATS -> {
+                    StatsScreen(records = records, allRecords = allRecords)
+                }
+                MainTab.SETTINGS -> {
+                    SettingsScreen(
+                        records = records,
+                        onClearAllData = {
+                            viewModel.clearAllData()
+                        },
+                    )
+                }
             }
 
             // 1. Add New Record Dialog
@@ -1255,6 +1332,1117 @@ fun AddRecordDialog(
             },
             dismissButton = {
                 OutlinedButton(onClick = { showAddNameDialog = false }) {
+                    Text("취소")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+fun StatsScreen(records: List<FinanceRecord>, allRecords: List<FinanceRecord>) {
+    if (records.isEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.BarChart,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.outline,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "통계 데이터가 없습니다.",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "홈 탭에서 자산을 추가하면\n카테고리별 통계와 차트를 확인할 수 있습니다.",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.outline,
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
+    }
+
+    val currencyFormat = remember { NumberFormat.getNumberInstance(Locale.KOREA) }
+    val totalValue = remember(records) { records.sumOf { it.value ?: 0 } }
+
+    val categoryGroup = remember(records) {
+        records.groupBy { it.category.takeIf { c -> !c.isNullOrBlank() } ?: "기타" }
+            .mapValues { (_, list) -> list.sumOf { it.value ?: 0 } }
+            .entries.sortedByDescending { it.value }
+    }
+
+    val chartColors = remember {
+        listOf(
+            Color(0xFF3F51B5),
+            Color(0xFF009688),
+            Color(0xFFFF9800),
+            Color(0xFFE91E63),
+            Color(0xFF9C27B0),
+            Color(0xFF4CAF50),
+            Color(0xFF00BCD4),
+            Color(0xFFFFC107),
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        // 1. Total Asset Summary Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+            ),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "자산 요약",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                )
+                Text(
+                    text = "${currencyFormat.format(totalValue)} 원",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        }
+
+        // 2. Asset Line Chart Card
+        AssetLineChartCard(
+            allRecords = allRecords,
+            currencyFormat = currencyFormat,
+        )
+
+        // 2. Donut Chart & Category Ratio Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            ),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    text = "카테고리별 비중 차트",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                // Canvas Donut Chart
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Canvas(
+                        modifier = Modifier.size(180.dp),
+                    ) {
+                        var startAngle = -90f
+                        val strokeWidth = 36.dp.toPx()
+
+                        if (totalValue > 0) {
+                            categoryGroup.forEachIndexed { index, (_, categorySum) ->
+                                val sweepAngle = (categorySum.toFloat() / totalValue.toFloat()) * 360f
+                                val color = chartColors[index % chartColors.size]
+
+                                drawArc(
+                                    color = color,
+                                    startAngle = startAngle,
+                                    sweepAngle = sweepAngle,
+                                    useCenter = false,
+                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Butt),
+                                )
+                                startAngle += sweepAngle
+                            }
+                        }
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "총 자산",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                        Text(
+                            text = "${currencyFormat.format(totalValue)} 원",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // Category Percentage List & Progress Bars
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    categoryGroup.forEachIndexed { index, (category, categorySum) ->
+                        val percentage = if (totalValue > 0) (categorySum.toDouble() / totalValue.toDouble()) * 100 else 0.0
+                        val color = chartColors[index % chartColors.size]
+
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(12.dp)
+                                            .background(color, shape = RoundedCornerShape(3.dp)),
+                                    )
+                                    Text(
+                                        text = category,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = "${currencyFormat.format(categorySum)} 원",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Text(
+                                        text = "(${String.format(Locale.KOREA, "%.1f", percentage)}%)",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                }
+                            }
+
+                            LinearProgressIndicator(
+                                progress = { (percentage / 100.0).toFloat() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp),
+                                color = color,
+                                trackColor = color.copy(alpha = 0.2f),
+                                drawStopIndicator = {},
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+enum class TimeGranularity(val label: String) {
+    DAILY("일별"),
+    WEEKLY("주별"),
+    MONTHLY("월별"),
+}
+
+fun chartStartDateForGranularity(endDate: Date, granularity: TimeGranularity): Date =
+    Calendar.getInstance().apply {
+        time = endDate
+        when (granularity) {
+            TimeGranularity.DAILY -> set(Calendar.DAY_OF_MONTH, 1)
+            TimeGranularity.WEEKLY -> add(Calendar.DAY_OF_MONTH, -29)
+            TimeGranularity.MONTHLY -> add(Calendar.MONTH, -12)
+        }
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.time
+
+data class ChartSlot(
+    val key: String,
+    val label: String,
+    val endTimestamp: Long,
+)
+
+fun showDatePicker(
+    context: android.content.Context,
+    initialDate: Date,
+    onDateSelected: (Date) -> Unit,
+) {
+    val cal = Calendar.getInstance().apply { time = initialDate }
+    DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            val resultCal = Calendar.getInstance().apply {
+                set(year, month, dayOfMonth, 0, 0, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            onDateSelected(resultCal.time)
+        },
+        cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH),
+        cal.get(Calendar.DAY_OF_MONTH),
+    ).show()
+}
+
+fun generateChartSlots(
+    startDate: Date,
+    endDate: Date,
+    granularity: TimeGranularity,
+): List<ChartSlot> {
+    val result = mutableListOf<ChartSlot>()
+
+    val cal = Calendar.getInstance().apply { time = startDate }
+    val endCal = Calendar.getInstance().apply { time = endDate }
+
+    cal.set(Calendar.HOUR_OF_DAY, 0)
+    cal.set(Calendar.MINUTE, 0)
+    cal.set(Calendar.SECOND, 0)
+    cal.set(Calendar.MILLISECOND, 0)
+
+    endCal.set(Calendar.HOUR_OF_DAY, 23)
+    endCal.set(Calendar.MINUTE, 59)
+    endCal.set(Calendar.SECOND, 59)
+    endCal.set(Calendar.MILLISECOND, 999)
+
+    val dateFormat = SimpleDateFormat("MM.dd", Locale.KOREA)
+    val monthFormat = SimpleDateFormat("yy.MM", Locale.KOREA)
+    val slotKeyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.KOREA)
+
+    while (!cal.after(endCal)) {
+        when (granularity) {
+            TimeGranularity.DAILY -> {
+                val slotEndCal = Calendar.getInstance().apply {
+                    time = cal.time
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+                val label = dateFormat.format(cal.time)
+                val key = slotKeyFormat.format(cal.time)
+                result.add(ChartSlot(key, label, slotEndCal.timeInMillis))
+                cal.add(Calendar.DAY_OF_MONTH, 1)
+            }
+            TimeGranularity.WEEKLY -> {
+                val slotEndCal = Calendar.getInstance().apply {
+                    time = cal.time
+                    add(Calendar.DAY_OF_MONTH, 6)
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+                val label = "${dateFormat.format(cal.time)}~"
+                val key = slotKeyFormat.format(cal.time)
+                result.add(ChartSlot(key, label, slotEndCal.timeInMillis))
+                cal.add(Calendar.DAY_OF_MONTH, 7)
+            }
+            TimeGranularity.MONTHLY -> {
+                val slotEndCal = Calendar.getInstance().apply {
+                    time = cal.time
+                    set(Calendar.DAY_OF_MONTH, getActualMaximum(Calendar.DAY_OF_MONTH))
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+                val label = monthFormat.format(cal.time)
+                val key = slotKeyFormat.format(cal.time)
+                result.add(ChartSlot(key, label, minOf(slotEndCal.timeInMillis, endCal.timeInMillis)))
+                cal.add(Calendar.MONTH, 1)
+            }
+        }
+    }
+
+    return if (result.size > 36) {
+        result.takeLast(36)
+    } else if (result.isEmpty()) {
+        listOf(ChartSlot("today", dateFormat.format(Date()), System.currentTimeMillis()))
+    } else {
+        result
+    }
+}
+
+@Composable
+fun AssetLineChartCard(
+    allRecords: List<FinanceRecord>,
+    currencyFormat: NumberFormat,
+) {
+    val context = LocalContext.current
+
+    val categoryToItemsMap = remember(allRecords) {
+        val defaultCategories = listOf("부동산", "금", "자동차", "입출금", "기타")
+        allRecords
+            .filter { !it.name.isNullOrBlank() }
+            .groupBy { it.category.takeIf { c -> !c.isNullOrBlank() } ?: "기타" }
+            .mapValues { (_, records) ->
+                records.mapNotNull { it.name.takeIf { n -> !n.isNullOrBlank() } }.distinct()
+            }
+            .entries
+            .sortedWith(compareBy { (cat, _) ->
+                val idx = defaultCategories.indexOf(cat)
+                if (idx != -1) idx else Int.MAX_VALUE
+            })
+    }
+
+    val itemNames = remember(categoryToItemsMap) {
+        categoryToItemsMap.flatMap { it.value }.distinct()
+    }
+
+    var activeItems by remember(itemNames) { mutableStateOf(itemNames.toSet()) }
+    var showTotalLine by remember { mutableStateOf(true) }
+
+    var granularity by remember { mutableStateOf(TimeGranularity.MONTHLY) }
+    var startDate by remember {
+        mutableStateOf(
+            Calendar.getInstance().apply { add(Calendar.MONTH, -12) }.time
+        )
+    }
+    var endDate by remember { mutableStateOf(Date()) }
+
+    val palette = remember {
+        listOf(
+            Color(0xFF3F51B5),
+            Color(0xFF009688),
+            Color(0xFFFF9800),
+            Color(0xFFE91E63),
+            Color(0xFF9C27B0),
+            Color(0xFF4CAF50),
+            Color(0xFF00BCD4),
+            Color(0xFFFF5722),
+            Color(0xFF795548),
+            Color(0xFF607D8B),
+        )
+    }
+
+    val itemColorMap = remember(itemNames, palette) {
+        itemNames.mapIndexed { index, name ->
+            name to palette[index % palette.size]
+        }.toMap()
+    }
+
+    val slots = remember(startDate, endDate, granularity) {
+        generateChartSlots(startDate, endDate, granularity)
+    }
+
+    val itemSlotValues = remember(allRecords, itemNames, slots) {
+        val map = mutableMapOf<Pair<String, Int>, Long>()
+        slots.forEachIndexed { slotIndex, slot ->
+            itemNames.forEach { itemName ->
+                val recordsUpToSlot = allRecords.filter { record ->
+                    record.name == itemName &&
+                    record.date != null &&
+                    record.date.time <= slot.endTimestamp
+                }
+                val latest = recordsUpToSlot.maxByOrNull { it.date?.time ?: 0L }
+                map[itemName to slotIndex] = (latest?.value ?: 0).toLong()
+            }
+        }
+        map
+    }
+
+    val activeItemSeries = remember(activeItems, itemSlotValues, slots) {
+        activeItems.associateWith { itemName ->
+            slots.indices.map { slotIndex ->
+                itemSlotValues[itemName to slotIndex] ?: 0L
+            }
+        }
+    }
+
+    val totalSeries = remember(activeItems, itemSlotValues, slots) {
+        slots.indices.map { slotIndex ->
+            activeItems.sumOf { itemName -> itemSlotValues[itemName to slotIndex] ?: 0L }
+        }
+    }
+
+    val allActiveValues = remember(activeItemSeries, totalSeries, showTotalLine) {
+        val list = mutableListOf<Long>()
+        if (showTotalLine) list.addAll(totalSeries)
+        activeItemSeries.values.forEach { list.addAll(it) }
+        list
+    }
+
+    val maxVal = remember(allActiveValues) { allActiveValues.maxOfOrNull { it } ?: 0L }
+    val minVal = remember(allActiveValues) { allActiveValues.minOfOrNull { it } ?: 0L }
+
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val outlineColor = MaterialTheme.colorScheme.outlineVariant
+    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "자산 추이 그래프",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                val currentTotal = totalSeries.lastOrNull() ?: 0L
+                Text(
+                    text = "선택 자산 합계: ${currencyFormat.format(currentTotal)} 원",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = primaryColor,
+                )
+            }
+
+            // Period & Granularity Controls
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "조회 단위",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TimeGranularity.entries.forEach { g ->
+                            val isSelected = granularity == g
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    granularity = g
+                                    startDate = chartStartDateForGranularity(endDate, g)
+                                },
+                                label = { Text(g.label, fontSize = 12.sp) },
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "조회 기간",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        val dateFormat = remember { SimpleDateFormat("yyyy.MM.dd", Locale.KOREA) }
+
+                        OutlinedButton(
+                            onClick = {
+                                showDatePicker(context, startDate) { selected ->
+                                    if (selected.after(endDate)) {
+                                        startDate = selected
+                                        endDate = selected
+                                    } else {
+                                        startDate = selected
+                                    }
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(36.dp),
+                        ) {
+                            Text(text = dateFormat.format(startDate), fontSize = 12.sp)
+                        }
+
+                        Text("~", fontSize = 14.sp, color = MaterialTheme.colorScheme.outline)
+
+                        OutlinedButton(
+                            onClick = {
+                                showDatePicker(context, endDate) { selected ->
+                                    if (selected.before(startDate)) {
+                                        startDate = selected
+                                        endDate = selected
+                                    } else {
+                                        endDate = selected
+                                    }
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(36.dp),
+                        ) {
+                            Text(text = dateFormat.format(endDate), fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider(color = outlineColor.copy(alpha = 0.5f))
+
+            // Grouped Option Chips by Category
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilterChip(
+                        selected = showTotalLine,
+                        onClick = { showTotalLine = !showTotalLine },
+                        label = {
+                            Text(
+                                text = "전체 합계 그래프",
+                                fontWeight = if (showTotalLine) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        },
+                        leadingIcon = if (showTotalLine) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        } else null,
+                    )
+                }
+
+                categoryToItemsMap.forEach { (category, items) ->
+                    val allCategoryActive = items.all { activeItems.contains(it) }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            onClick = {
+                                activeItems = if (allCategoryActive) {
+                                    activeItems - items.toSet()
+                                } else {
+                                    activeItems + items.toSet()
+                                }
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (allCategoryActive) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                CategoryChip(category = category)
+                                Text(
+                                    text = category,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (allCategoryActive) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+
+                        items.forEach { itemName ->
+                            val isSelected = activeItems.contains(itemName)
+                            val chipColor = itemColorMap[itemName] ?: primaryColor
+
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    activeItems = if (isSelected) {
+                                        activeItems - itemName
+                                    } else {
+                                        activeItems + itemName
+                                    }
+                                },
+                                label = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .background(
+                                                    color = if (isSelected) chipColor else chipColor.copy(alpha = 0.4f),
+                                                    shape = RoundedCornerShape(2.dp),
+                                                ),
+                                        )
+                                        Text(
+                                            text = itemName,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider(color = outlineColor.copy(alpha = 0.5f))
+
+            // Canvas Chart
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp),
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val paddingLeft = 68.dp.toPx()
+                    val paddingRight = 12.dp.toPx()
+                    val paddingTop = 20.dp.toPx()
+                    val paddingBottom = 30.dp.toPx()
+
+                    val chartWidth = size.width - paddingLeft - paddingRight
+                    val chartHeight = size.height - paddingTop - paddingBottom
+
+                    val range = if (maxVal == minVal) 1L else (maxVal - minVal)
+
+                    val gridCount = 3
+                    val axisLabelPaint = android.graphics.Paint().apply {
+                        color = textColor.toArgb()
+                        textSize = 10.sp.toPx()
+                        textAlign = android.graphics.Paint.Align.RIGHT
+                        isAntiAlias = true
+                    }
+                    val guidePaint = android.graphics.Paint().apply {
+                        color = outlineColor.copy(alpha = 0.65f).toArgb()
+                        strokeWidth = 1.dp.toPx()
+                        pathEffect = android.graphics.DashPathEffect(floatArrayOf(3.dp.toPx(), 3.dp.toPx()), 0f)
+                        isAntiAlias = true
+                    }
+                    for (i in 0..gridCount) {
+                        val gy = paddingTop + (i.toFloat() / gridCount) * chartHeight
+                        drawLine(
+                            color = outlineColor.copy(alpha = 0.3f),
+                            start = Offset(paddingLeft, gy),
+                            end = Offset(paddingLeft + chartWidth, gy),
+                            strokeWidth = 1.dp.toPx(),
+                        )
+                        val tickValue = maxVal.toDouble() -
+                            (i.toDouble() / gridCount) * (maxVal.toDouble() - minVal.toDouble())
+                        val tickLabel = when {
+                            tickValue >= 100_000_000 -> String.format(Locale.KOREA, "%.1f억", tickValue / 100_000_000)
+                            tickValue >= 10_000 -> String.format(Locale.KOREA, "%.0f만", tickValue / 10_000)
+                            else -> NumberFormat.getIntegerInstance(Locale.KOREA).format(tickValue.toLong())
+                        }
+                        drawContext.canvas.nativeCanvas.drawText(
+                            tickLabel,
+                            paddingLeft - 8.dp.toPx(),
+                            gy + axisLabelPaint.textSize / 3f,
+                            axisLabelPaint,
+                        )
+                    }
+
+                    val slotCount = slots.size
+
+                    // 1. Draw Active Individual Item Lines
+                    activeItemSeries.forEach { (itemName, values) ->
+                        val color = itemColorMap[itemName] ?: primaryColor
+                        val points = values.mapIndexed { index, value ->
+                            val x = paddingLeft + (index.toFloat() / (slotCount - 1).coerceAtLeast(1)) * chartWidth
+                            val normalized = ((value - minVal).toFloat() / range.toFloat())
+                            val y = paddingTop + chartHeight - (normalized * chartHeight)
+                            Offset(x, y)
+                        }
+
+                        points.forEach { point ->
+                            drawContext.canvas.nativeCanvas.drawLine(
+                                point.x,
+                                point.y,
+                                point.x,
+                                paddingTop + chartHeight,
+                                guidePaint,
+                            )
+                        }
+
+                        if (points.size > 1) {
+                            val linePath = Path().apply {
+                                moveTo(points.first().x, points.first().y)
+                                for (i in 1 until points.size) {
+                                    lineTo(points[i].x, points[i].y)
+                                }
+                            }
+                            drawPath(
+                                path = linePath,
+                                color = color,
+                                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                            )
+                        }
+
+                        points.forEach { point ->
+                            drawCircle(
+                                color = color,
+                                radius = 3.dp.toPx(),
+                                center = point,
+                            )
+                            drawCircle(
+                                color = Color.White,
+                                radius = 1.5.dp.toPx(),
+                                center = point,
+                            )
+                        }
+                    }
+
+                    // 2. Draw Combined Total Line (if enabled)
+                    if (showTotalLine && totalSeries.isNotEmpty()) {
+                        val totalPoints = totalSeries.mapIndexed { index, value ->
+                            val x = paddingLeft + (index.toFloat() / (slotCount - 1).coerceAtLeast(1)) * chartWidth
+                            val normalized = ((value - minVal).toFloat() / range.toFloat())
+                            val y = paddingTop + chartHeight - (normalized * chartHeight)
+                            Offset(x, y)
+                        }
+
+                        totalPoints.forEach { point ->
+                            drawContext.canvas.nativeCanvas.drawLine(
+                                point.x,
+                                point.y,
+                                point.x,
+                                paddingTop + chartHeight,
+                                guidePaint,
+                            )
+                        }
+
+                        if (totalPoints.size > 1) {
+                            val fillPath = Path().apply {
+                                moveTo(totalPoints.first().x, paddingTop + chartHeight)
+                                totalPoints.forEach { pt -> lineTo(pt.x, pt.y) }
+                                lineTo(totalPoints.last().x, paddingTop + chartHeight)
+                                close()
+                            }
+                            drawPath(
+                                path = fillPath,
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        primaryColor.copy(alpha = 0.25f),
+                                        Color.Transparent,
+                                    ),
+                                    startY = paddingTop,
+                                    endY = paddingTop + chartHeight,
+                                ),
+                            )
+
+                            val linePath = Path().apply {
+                                moveTo(totalPoints.first().x, totalPoints.first().y)
+                                for (i in 1 until totalPoints.size) {
+                                    lineTo(totalPoints[i].x, totalPoints[i].y)
+                                }
+                            }
+                            drawPath(
+                                path = linePath,
+                                color = primaryColor,
+                                style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round),
+                            )
+                        }
+
+                        totalPoints.forEach { point ->
+                            drawCircle(
+                                color = primaryColor,
+                                radius = 4.5.dp.toPx(),
+                                center = point,
+                            )
+                            drawCircle(
+                                color = Color.White,
+                                radius = 2.dp.toPx(),
+                                center = point,
+                            )
+                        }
+                    }
+
+                    // X-axis Slot Labels
+                    val labelPaint = android.graphics.Paint().apply {
+                        color = textColor.toArgb()
+                        textSize = 9.sp.toPx()
+                        textAlign = android.graphics.Paint.Align.CENTER
+                        isAntiAlias = true
+                    }
+
+                    val labelStep = when {
+                        slotCount <= 12 -> 1
+                        slotCount <= 20 -> 2
+                        else -> 4
+                    }
+
+                    slots.forEachIndexed { index, slot ->
+                        val x = paddingLeft + (index.toFloat() / (slotCount - 1).coerceAtLeast(1)) * chartWidth
+                        if (index % labelStep == 0 || index == slotCount - 1) {
+                            drawContext.canvas.nativeCanvas.drawText(
+                                slot.label,
+                                x,
+                                paddingTop + chartHeight + 20.dp.toPx(),
+                                labelPaint,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsScreen(
+    records: List<FinanceRecord>,
+    onClearAllData: () -> Unit,
+) {
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        // App Overview Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+            ),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "자산 관리자 (Finance Manager)",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Text(
+                    text = "개인 자산을 효율적으로 관리하고 통계를 확인해보세요.",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                )
+            }
+        }
+
+        // Asset Management & Data Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            ),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = "데이터 관리",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "보유 자산 항목 수",
+                        fontSize = 15.sp,
+                    )
+                    Text(
+                        text = "${records.size}개",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                Button(
+                    onClick = { showClearConfirmDialog = true },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = records.isNotEmpty(),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "전체 자산 데이터 초기화")
+                }
+            }
+        }
+
+        // Display & Currency Settings Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            ),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = "표시 및 카테고리 설정",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "기본 통화",
+                        fontSize = 15.sp,
+                    )
+                    Text(
+                        text = "대한민국 원 (KRW, ₩)",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                Text(
+                    text = "기본 카테고리 목록",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    listOf("부동산", "금", "자동차", "입출금", "기타").forEach { cat ->
+                        CategoryChip(category = cat)
+                    }
+                }
+            }
+        }
+
+        // App Info Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            ),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = "앱 정보",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = "버전 정보",
+                        fontSize = 15.sp,
+                    )
+                    Text(
+                        text = "1.0.0",
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+            }
+        }
+    }
+
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            title = {
+                Text(
+                    text = "전체 데이터 초기화",
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = {
+                Text(text = "등록된 모든 자산 기록이 삭제되며 복구할 수 없습니다. 정말로 모든 데이터를 초기화하시겠습니까?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onClearAllData()
+                        showClearConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                ) {
+                    Text("초기화")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showClearConfirmDialog = false }) {
                     Text("취소")
                 }
             },

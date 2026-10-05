@@ -33,4 +33,7 @@ interface FinanceRecordDao {
 
     @Delete
     suspend fun delete(record: FinanceRecord)
+
+    @Query("DELETE FROM finance_records")
+    suspend fun deleteAll()
 }
