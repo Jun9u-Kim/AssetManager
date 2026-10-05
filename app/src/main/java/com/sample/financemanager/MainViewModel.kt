@@ -32,6 +32,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = emptyList(),
         )
 
+    val allRecords: StateFlow<List<FinanceRecord>> = dao.getAll()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList(),
+        )
+
     fun getHistoryForAsset(category: String, name: String): Flow<List<FinanceRecord>> {
         return dao.getRecordsByCategoryAndName(category, name)
     }
@@ -64,6 +71,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteRecord(record: FinanceRecord) {
         viewModelScope.launch {
             dao.delete(record)
+        }
+    }
+
+    fun clearAllData() {
+        viewModelScope.launch {
+            dao.deleteAll()
         }
     }
 }
