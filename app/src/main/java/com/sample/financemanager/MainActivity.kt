@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -214,6 +215,17 @@ fun FinanceRecordList(
     val currencyFormat = remember { NumberFormat.getNumberInstance(Locale.KOREA) }
     val dateFormat = remember { SimpleDateFormat("yyyy.MM.dd", Locale.KOREA) }
 
+    val defaultCategories = remember { listOf("부동산", "금", "자동차", "입출금", "기타") }
+    val groupedRecords = remember(records) {
+        val map = records.groupBy { it.category.takeIf { c -> !c.isNullOrBlank() } ?: "기타" }
+        map.entries.sortedWith(
+            compareBy { (category, _) ->
+                val idx = defaultCategories.indexOf(category)
+                if (idx != -1) idx else Int.MAX_VALUE
+            }
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         // Summary Card
         Card(
@@ -248,10 +260,90 @@ fun FinanceRecordList(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            items(records, key = { it.uid }) { record ->
+            items(groupedRecords, key = { (category, _) -> category }) { (category, categoryRecords) ->
+                CategorySection(
+                    category = category,
+                    records = categoryRecords,
+                    currencyFormat = currencyFormat,
+                    dateFormat = dateFormat,
+                    onEdit = onEdit,
+                    onDelete = onDelete,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CategorySection(
+    category: String,
+    records: List<FinanceRecord>,
+    currencyFormat: NumberFormat,
+    dateFormat: SimpleDateFormat,
+    onEdit: (FinanceRecord) -> Unit,
+    onDelete: (FinanceRecord) -> Unit,
+) {
+    val categoryTotal = remember(records) {
+        records.sumOf { it.value ?: 0 }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // Category Section Header (Top of Category Region)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CategoryChip(category = category)
+                    Text(
+                        text = category,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = "합계",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                    Text(
+                        text = "${currencyFormat.format(categoryTotal)} 원",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+
+            // Asset records under this category
+            records.forEach { record ->
                 FinanceRecordCard(
                     record = record,
                     currencyFormat = currencyFormat,
@@ -275,52 +367,56 @@ fun FinanceRecordCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = MaterialTheme.colorScheme.surface,
         ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Line 1 (Top): Category & Name on left, Edit & Delete buttons on right
+            // Line 1 (Top): Asset Name on left, Edit & Delete buttons on right
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CategoryChip(category = record.category ?: "기타")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = record.name ?: "",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
+                Text(
+                    text = record.name ?: "",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onEdit) {
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.size(32.dp),
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = "편집",
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.height(20.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
-                    IconButton(onClick = onDelete) {
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(32.dp),
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "삭제",
                             tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.height(20.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
             // Line 2 (Middle): Value Amount
             Row(
@@ -335,7 +431,7 @@ fun FinanceRecordCard(
                 )
                 Text(
                     text = "${currencyFormat.format(record.value ?: 0)} 원",
-                    fontSize = 18.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                 )
