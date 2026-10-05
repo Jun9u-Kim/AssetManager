@@ -210,12 +210,7 @@ fun FinanceManagerApp(viewModel: MainViewModel = viewModel()) {
                     StatsScreen(records = records, allRecords = allRecords)
                 }
                 MainTab.SETTINGS -> {
-                    SettingsScreen(
-                        records = records,
-                        onClearAllData = {
-                            viewModel.clearAllData()
-                        },
-                    )
+                    SettingsScreen(records = records)
                 }
             }
 
@@ -2224,10 +2219,7 @@ fun AssetLineChartCard(
 @Composable
 fun SettingsScreen(
     records: List<FinanceRecord>,
-    onClearAllData: () -> Unit,
 ) {
-    var showClearConfirmDialog by remember { mutableStateOf(false) }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2300,25 +2292,6 @@ fun SettingsScreen(
                     )
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                Button(
-                    onClick = { showClearConfirmDialog = true },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = records.isNotEmpty(),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "전체 자산 데이터 초기화")
-                }
             }
         }
 
@@ -2356,23 +2329,6 @@ fun SettingsScreen(
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.outline,
                     )
-                }
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                Text(
-                    text = "기본 카테고리 목록",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    listOf("부동산", "금", "자동차", "입출금", "기타").forEach { cat ->
-                        CategoryChip(category = cat)
-                    }
                 }
             }
         }
@@ -2415,37 +2371,4 @@ fun SettingsScreen(
         }
     }
 
-    if (showClearConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirmDialog = false },
-            title = {
-                Text(
-                    text = "전체 데이터 초기화",
-                    fontWeight = FontWeight.Bold,
-                )
-            },
-            text = {
-                Text(text = "등록된 모든 자산 기록이 삭제되며 복구할 수 없습니다. 정말로 모든 데이터를 초기화하시겠습니까?")
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onClearAllData()
-                        showClearConfirmDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
-                    ),
-                ) {
-                    Text("초기화")
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showClearConfirmDialog = false }) {
-                    Text("취소")
-                }
-            },
-        )
-    }
 }
