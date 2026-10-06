@@ -1,4 +1,4 @@
-package com.sample.financemanager.data
+package com.sample.assetmanager.data
 
 import androidx.room.TypeConverter
 import java.util.Date
