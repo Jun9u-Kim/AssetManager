@@ -1,9 +1,14 @@
 package com.lgtm.assetmanager
 
+import android.content.ClipData
+import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -79,6 +84,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
@@ -105,20 +111,24 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.FileProvider
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
 import com.lgtm.assetmanager.data.AssetRecord
+import com.lgtm.assetmanager.data.AssetCsv
 import com.lgtm.assetmanager.ui.theme.AssetManagerTheme
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val adsReady = mutableStateOf(false)
@@ -198,6 +208,67 @@ fun AssetManagerApp(
 ) {
     val records by viewModel.records.collectAsStateWithLifecycle()
     val allRecords by viewModel.allRecords.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var pendingCsvImport by remember { mutableStateOf<List<AssetRecord>?>(null) }
+    val csvImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use(AssetCsv::decode)
+                            ?: error("선택한 파일을 열 수 없습니다.")
+                    }
+                }.onSuccess { imported ->
+                    pendingCsvImport = imported
+                }.onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: "CSV 파일을 읽지 못했습니다.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
+        }
+    }
+
+    fun shareCsvFile() {
+        coroutineScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val recordsToExport = viewModel.getAllRecordsSnapshot()
+                    val exportDirectory = File(context.cacheDir, "exports").apply { mkdirs() }
+                    val csvFile = File(exportDirectory, "asset_records_${System.currentTimeMillis()}.csv")
+                    csvFile.writeText(AssetCsv.encode(recordsToExport), Charsets.UTF_8)
+                    FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        csvFile,
+                    )
+                }
+            }.onSuccess { uri ->
+                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/vnd.ms-excel"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = ClipData(
+                        "CSV 파일",
+                        arrayOf("application/vnd.ms-excel"),
+                        ClipData.Item(uri),
+                    )
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(sendIntent, "CSV 파일 공유"))
+            }.onFailure { error ->
+                Toast.makeText(
+                    context,
+                    error.message ?: "CSV 파일을 내보내지 못했습니다.",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
 
     var currentTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
 
@@ -283,7 +354,13 @@ fun AssetManagerApp(
                     StatsScreen(records = records, allRecords = allRecords)
                 }
                 MainTab.SETTINGS -> {
-                    SettingsScreen(records = records)
+                    SettingsScreen(
+                        records = records,
+                        onExportCsv = ::shareCsvFile,
+                        onImportCsv = {
+                            csvImportLauncher.launch(arrayOf("text/*", "application/*"))
+                        },
+                    )
                 }
             }
 
@@ -317,6 +394,35 @@ fun AssetManagerApp(
                     asset = record,
                     viewModel = viewModel,
                     onDismiss = { assetToEdit = null },
+                )
+            }
+
+            pendingCsvImport?.let { importedRecords ->
+                AlertDialog(
+                    onDismissRequest = { pendingCsvImport = null },
+                    title = { Text("CSV 데이터 가져오기") },
+                    text = {
+                        Text(
+                            if (importedRecords.isEmpty()) {
+                                "가져올 기록이 없습니다."
+                            } else {
+                                "${importedRecords.size}개 기록을 기존 데이터에 추가할까요? 기존 데이터는 유지됩니다. 같은 파일을 다시 가져오면 중복 기록이 생길 수 있습니다."
+                            },
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = importedRecords.isNotEmpty(),
+                            onClick = {
+                                viewModel.importRecords(importedRecords)
+                                pendingCsvImport = null
+                                Toast.makeText(context, "CSV 데이터를 가져왔습니다.", Toast.LENGTH_SHORT).show()
+                            },
+                        ) { Text("추가") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { pendingCsvImport = null }) { Text("취소") }
+                    },
                 )
             }
         }
@@ -2371,6 +2477,8 @@ fun AssetLineChartCard(
 @Composable
 fun SettingsScreen(
     records: List<AssetRecord>,
+    onExportCsv: () -> Unit,
+    onImportCsv: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -2443,6 +2551,34 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
+
+                Text(
+                    text = "전체 기록을 CSV 파일로 공유하거나 파일에서 추가할 수 있어요.",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = onExportCsv,
+                    ) {
+                        Text("CSV 공유")
+                    }
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = onImportCsv,
+                    ) {
+                        Text("CSV 가져오기")
+                    }
+                }
+                Text(
+                    text = "CSV 열 형식: category, name, value, date (ISO 8601, 예: 2026-10-06T14:30:00+09:00). 기존 데이터에 추가됩니다.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.outline,
+                )
 
             }
         }

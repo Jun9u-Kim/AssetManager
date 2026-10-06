@@ -28,6 +28,21 @@ interface AssetRecordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(vararg records: AssetRecord)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecords(records: List<AssetRecord>)
+
+    @Query(
+        """
+        DELETE FROM asset_records
+        WHERE uid NOT IN (
+            SELECT MIN(uid)
+            FROM asset_records
+            GROUP BY category, name, value, date
+        )
+        """,
+    )
+    suspend fun removeDuplicateRecords()
+
     @Update
     suspend fun update(record: AssetRecord)
 
