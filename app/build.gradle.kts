@@ -14,8 +14,8 @@ android {
         applicationId = "com.lgtm.assetmanager"
         minSdk = 24
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.1.0"
+        versionCode = 4
+        versionName = "1.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -24,7 +24,7 @@ android {
         release {
             optimization {
                 enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+                packageScope = setOf("androidx.**")
             }
         }
     }
