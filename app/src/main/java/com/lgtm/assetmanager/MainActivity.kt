@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -81,7 +82,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -100,6 +104,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.viewinterop.AndroidView
+import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdSize
+import com.google.android.gms.ads.AdView
 import com.lgtm.assetmanager.data.AssetRecord
 import com.lgtm.assetmanager.ui.theme.AssetManagerTheme
 import java.text.NumberFormat
@@ -107,18 +116,68 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private val adsReady = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        CoroutineScope(Dispatchers.IO).launch {
+            MobileAds.initialize(this@MainActivity) {
+                runOnUiThread { adsReady.value = true }
+            }
+        }
         setContent {
             AssetManagerTheme {
-                AssetManagerApp()
+                AssetManagerApp(showAds = adsReady.value)
             }
         }
     }
 
+}
+
+@Composable
+private fun AdMobBanner() {
+    val context = LocalContext.current
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface),
+        contentAlignment = Alignment.Center,
+    ) {
+        val widthDp = maxWidth.value.toInt()
+        if (widthDp > 0) {
+            val adSize = remember(widthDp) {
+                AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(context, widthDp)
+            }
+            val adView = remember(widthDp) {
+                AdView(context).apply {
+                    adUnitId = if (BuildConfig.DEBUG) {
+                        "ca-app-pub-3940256099942544/9214589741"
+                    } else {
+                        "ca-app-pub-7916608815143603/8737088103"
+                    }
+                    setAdSize(adSize)
+                }
+            }
+
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(adSize.height.dp),
+                factory = { view ->
+                    adView.apply { loadAd(AdRequest.Builder().build()) }
+                },
+            )
+            DisposableEffect(adView) {
+                onDispose { adView.destroy() }
+            }
+        }
+    }
 }
 
 enum class MainTab(
@@ -133,7 +192,10 @@ enum class MainTab(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AssetManagerApp(viewModel: MainViewModel = viewModel()) {
+fun AssetManagerApp(
+    showAds: Boolean = true,
+    viewModel: MainViewModel = viewModel(),
+) {
     val records by viewModel.records.collectAsStateWithLifecycle()
     val allRecords by viewModel.allRecords.collectAsStateWithLifecycle()
 
@@ -164,24 +226,28 @@ fun AssetManagerApp(viewModel: MainViewModel = viewModel()) {
             )
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 0.dp,
-            ) {
-                MainTab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = currentTab == tab,
-                        onClick = { currentTab = tab },
-                        icon = {
-                            Icon(
-                                imageVector = if (currentTab == tab) tab.selectedIcon else tab.unselectedIcon,
-                                contentDescription = tab.title,
-                            )
-                        },
-                        label = {
-                            Text(text = tab.title)
-                        },
-                    )
+            Column {
+                if (showAds) {
+                    AdMobBanner()
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp,
+                ) {
+                    MainTab.entries.forEach { tab ->
+                        NavigationBarItem(
+                            selected = currentTab == tab,
+                            onClick = { currentTab = tab },
+                            icon = {
+                                Icon(
+                                    imageVector = if (currentTab == tab) tab.selectedIcon else tab.unselectedIcon,
+                                    contentDescription = tab.title,
+                                )
+                            },
+                            label = { Text(text = tab.title) },
+                        )
+                    }
                 }
             }
         },
@@ -2448,7 +2514,7 @@ fun SettingsScreen(
                         fontSize = 15.sp,
                     )
                     Text(
-                        text = "1.0.0",
+                        text = "1.0.1",
                         fontSize = 15.sp,
                         color = MaterialTheme.colorScheme.outline,
                     )
