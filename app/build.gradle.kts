@@ -5,13 +5,13 @@ plugins {
 }
 
 android {
-    namespace = "com.sample.assetmanager"
+    namespace = "com.lgtm.assetmanager"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.sample.assetmanager"
+        applicationId = "com.lgtm.assetmanager"
         minSdk = 24
         targetSdk = 37
         versionCode = 1

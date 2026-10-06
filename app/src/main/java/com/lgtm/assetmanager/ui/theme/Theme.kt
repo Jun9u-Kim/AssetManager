@@ -1,25 +1,25 @@
-package com.sample.assetmanager.ui.theme
+package com.lgtm.assetmanager.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val FinanceColorScheme = lightColorScheme(
-    primary = FinanceRed,
+private val AssetColorScheme = lightColorScheme(
+    primary = AssetRed,
     onPrimary = Color.White,
-    primaryContainer = FinanceRedContainer,
-    onPrimaryContainer = FinanceInk,
-    secondary = FinanceInk,
+    primaryContainer = AssetRedContainer,
+    onPrimaryContainer = AssetInk,
+    secondary = AssetInk,
     onSecondary = Color.White,
     tertiary = Color(0xFF9F3030),
-    background = FinanceBackground,
-    onBackground = FinanceInk,
-    surface = FinanceSurface,
-    onSurface = FinanceInk,
-    surfaceVariant = FinanceSurfaceVariant,
-    onSurfaceVariant = FinanceMutedInk,
-    outline = FinanceOutline,
+    background = AssetBackground,
+    onBackground = AssetInk,
+    surface = AssetSurface,
+    onSurface = AssetInk,
+    surfaceVariant = AssetSurfaceVariant,
+    onSurfaceVariant = AssetMutedInk,
+    outline = AssetOutline,
     outlineVariant = Color(0xFFE2E2E2),
     error = Color(0xFFB3261E),
     onError = Color.White,
@@ -28,7 +28,7 @@ private val FinanceColorScheme = lightColorScheme(
 @Composable
 fun AssetManagerTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = FinanceColorScheme,
+        colorScheme = AssetColorScheme,
         typography = Typography,
         content = content,
     )

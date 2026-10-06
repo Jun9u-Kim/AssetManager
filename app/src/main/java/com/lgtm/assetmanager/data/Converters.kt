@@ -1,4 +1,4 @@
-package com.sample.assetmanager.data
+package com.lgtm.assetmanager.data
 
 import androidx.room.TypeConverter
 import java.util.Date

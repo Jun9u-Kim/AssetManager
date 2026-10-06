@@ -1,4 +1,4 @@
-package com.sample.assetmanager
+package com.lgtm.assetmanager
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -100,8 +100,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.sample.assetmanager.data.FinanceRecord
-import com.sample.assetmanager.ui.theme.AssetManagerTheme
+import com.lgtm.assetmanager.data.AssetRecord
+import com.lgtm.assetmanager.ui.theme.AssetManagerTheme
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -140,8 +140,8 @@ fun AssetManagerApp(viewModel: MainViewModel = viewModel()) {
     var currentTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
 
     var showAddDialog by remember { mutableStateOf(false) }
-    var recordToDelete by remember { mutableStateOf<FinanceRecord?>(null) }
-    var assetToEdit by remember { mutableStateOf<FinanceRecord?>(null) }
+    var recordToDelete by remember { mutableStateOf<AssetRecord?>(null) }
+    var assetToEdit by remember { mutableStateOf<AssetRecord?>(null) }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -207,7 +207,7 @@ fun AssetManagerApp(viewModel: MainViewModel = viewModel()) {
         ) {
             when (currentTab) {
                 MainTab.HOME -> {
-                    FinanceRecordList(
+                    AssetRecordList(
                         records = records,
                         onEdit = { record -> assetToEdit = record },
                         onDelete = { record -> recordToDelete = record },
@@ -258,10 +258,10 @@ fun AssetManagerApp(viewModel: MainViewModel = viewModel()) {
 }
 
 @Composable
-fun FinanceRecordList(
-    records: List<FinanceRecord>,
-    onEdit: (FinanceRecord) -> Unit,
-    onDelete: (FinanceRecord) -> Unit,
+fun AssetRecordList(
+    records: List<AssetRecord>,
+    onEdit: (AssetRecord) -> Unit,
+    onDelete: (AssetRecord) -> Unit,
 ) {
     val totalValue = remember(records) {
         records.sumOf { it.value ?: 0 }
@@ -408,11 +408,11 @@ fun HomeAssetBanner() {
 @Composable
 fun CategorySection(
     category: String,
-    records: List<FinanceRecord>,
+    records: List<AssetRecord>,
     currencyFormat: NumberFormat,
     dateFormat: SimpleDateFormat,
-    onEdit: (FinanceRecord) -> Unit,
-    onDelete: (FinanceRecord) -> Unit,
+    onEdit: (AssetRecord) -> Unit,
+    onDelete: (AssetRecord) -> Unit,
 ) {
     val categoryTotal = remember(records) {
         records.sumOf { it.value ?: 0 }
@@ -466,7 +466,7 @@ fun CategorySection(
 
             // Asset records under this category
             records.forEach { record ->
-                FinanceRecordCard(
+                AssetRecordCard(
                     record = record,
                     currencyFormat = currencyFormat,
                     dateFormat = dateFormat,
@@ -479,8 +479,8 @@ fun CategorySection(
 }
 
 @Composable
-fun FinanceRecordCard(
-    record: FinanceRecord,
+fun AssetRecordCard(
+    record: AssetRecord,
     currencyFormat: NumberFormat,
     dateFormat: SimpleDateFormat,
     onEdit: () -> Unit,
@@ -619,7 +619,7 @@ fun CategoryChip(category: String, large: Boolean = false) {
 // Delete Confirmation Dialog
 @Composable
 fun DeleteConfirmationDialog(
-    record: FinanceRecord,
+    record: AssetRecord,
     onDismiss: () -> Unit,
     onConfirmDelete: () -> Unit,
 ) {
@@ -657,7 +657,7 @@ fun DeleteConfirmationDialog(
 // Edit Asset History Dialog
 @Composable
 fun EditAssetHistoryDialog(
-    asset: FinanceRecord,
+    asset: AssetRecord,
     viewModel: MainViewModel,
     onDismiss: () -> Unit,
 ) {
@@ -668,7 +668,7 @@ fun EditAssetHistoryDialog(
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
     var showAddHistoryDialog by remember { mutableStateOf(false) }
-    var recordToDeleteInHistory by remember { mutableStateOf<FinanceRecord?>(null) }
+    var recordToDeleteInHistory by remember { mutableStateOf<AssetRecord?>(null) }
 
     val currencyFormat = remember { NumberFormat.getNumberInstance(Locale.KOREA) }
     val dateFormat = remember { SimpleDateFormat("yyyy.MM.dd", Locale.KOREA) }
@@ -804,10 +804,10 @@ fun EditAssetHistoryDialog(
 
 @Composable
 fun HistoryRecordRow(
-    record: FinanceRecord,
+    record: AssetRecord,
     currencyFormat: NumberFormat,
     dateFormat: SimpleDateFormat,
-    onUpdateRecord: (FinanceRecord) -> Unit,
+    onUpdateRecord: (AssetRecord) -> Unit,
     onDeleteRecord: () -> Unit,
 ) {
     var valueText by remember(record.value) { mutableStateOf((record.value ?: 0).toString()) }
@@ -933,7 +933,7 @@ fun HistoryRecordRow(
     }
 
     if (showDatePicker) {
-        FinanceDatePickerDialog(
+        AssetDatePickerDialog(
             initialDate = currentDate,
             onDismiss = { showDatePicker = false },
             onDateSelected = { newDate ->
@@ -1033,7 +1033,7 @@ fun AddHistoryRecordDialog(
     )
 
     if (showDatePicker) {
-        FinanceDatePickerDialog(
+        AssetDatePickerDialog(
             initialDate = selectedDate,
             onDismiss = { showDatePicker = false },
             onDateSelected = { selectedDate = it },
@@ -1044,7 +1044,7 @@ fun AddHistoryRecordDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddRecordDialog(
-    existingRecords: List<FinanceRecord>,
+    existingRecords: List<AssetRecord>,
     onDismiss: () -> Unit,
     onAddRecord: (category: String, name: String, value: Int, date: Date) -> Unit,
 ) {
@@ -1351,7 +1351,7 @@ fun AddRecordDialog(
     }
 
     if (showDatePicker) {
-        FinanceDatePickerDialog(
+        AssetDatePickerDialog(
             initialDate = selectedDate,
             onDismiss = { showDatePicker = false },
             onDateSelected = { selectedDate = it },
@@ -1360,7 +1360,7 @@ fun AddRecordDialog(
 }
 
 @Composable
-fun StatsScreen(records: List<FinanceRecord>, allRecords: List<FinanceRecord>) {
+fun StatsScreen(records: List<AssetRecord>, allRecords: List<AssetRecord>) {
     if (records.isEmpty()) {
         Column(
             modifier = Modifier
@@ -1614,7 +1614,7 @@ data class ChartSlot(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FinanceDatePickerDialog(
+fun AssetDatePickerDialog(
     initialDate: Date,
     onDismiss: () -> Unit,
     onDateSelected: (Date) -> Unit,
@@ -1759,7 +1759,7 @@ fun generateChartSlots(
 
 @Composable
 fun AssetLineChartCard(
-    allRecords: List<FinanceRecord>,
+    allRecords: List<AssetRecord>,
     currencyFormat: NumberFormat,
 ) {
     val categoryToItemsMap = remember(allRecords) {
@@ -2272,7 +2272,7 @@ fun AssetLineChartCard(
     }
 
     if (showStartDatePicker) {
-        FinanceDatePickerDialog(
+        AssetDatePickerDialog(
             initialDate = startDate,
             onDismiss = { showStartDatePicker = false },
             onDateSelected = { selected ->
@@ -2287,7 +2287,7 @@ fun AssetLineChartCard(
     }
 
     if (showEndDatePicker) {
-        FinanceDatePickerDialog(
+        AssetDatePickerDialog(
             initialDate = endDate,
             onDismiss = { showEndDatePicker = false },
             onDateSelected = { selected ->
@@ -2304,7 +2304,7 @@ fun AssetLineChartCard(
 
 @Composable
 fun SettingsScreen(
-    records: List<FinanceRecord>,
+    records: List<AssetRecord>,
 ) {
     Column(
         modifier = Modifier

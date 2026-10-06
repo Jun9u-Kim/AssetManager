@@ -1,12 +1,12 @@
-package com.sample.assetmanager.data
+package com.lgtm.assetmanager.data
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.util.Date
 
-@Entity(tableName = "finance_records")
-data class FinanceRecord(
+@Entity(tableName = "asset_records")
+data class AssetRecord(
     @PrimaryKey(autoGenerate = true)
     val uid: Int = 0,
     @ColumnInfo(name = "category") val category: String?,
