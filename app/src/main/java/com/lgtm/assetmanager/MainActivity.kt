@@ -2808,7 +2808,7 @@ fun SettingsScreen(
                         fontSize = 15.sp,
                     )
                     Text(
-                        text = "1.0.1",
+                        text = "1.1.0",
                         fontSize = 15.sp,
                         color = MaterialTheme.colorScheme.outline,
                     )
