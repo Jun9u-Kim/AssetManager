@@ -1,4 +1,4 @@
-package com.sample.financemanager
+package com.sample.assetmanager
 
 import org.junit.Test
 

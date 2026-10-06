@@ -5,13 +5,13 @@ plugins {
 }
 
 android {
-    namespace = "com.sample.financemanager"
+    namespace = "com.sample.assetmanager"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.sample.financemanager"
+        applicationId = "com.sample.assetmanager"
         minSdk = 24
         targetSdk = 37
         versionCode = 1
@@ -34,6 +34,14 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("AssetManager-${variant.name}.apk")
+        }
     }
 }
 

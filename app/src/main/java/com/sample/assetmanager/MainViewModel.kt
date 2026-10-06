@@ -1,10 +1,10 @@
-package com.sample.financemanager
+package com.sample.assetmanager
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.sample.financemanager.data.AppDatabase
-import com.sample.financemanager.data.FinanceRecord
+import com.sample.assetmanager.data.AppDatabase
+import com.sample.assetmanager.data.FinanceRecord
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow

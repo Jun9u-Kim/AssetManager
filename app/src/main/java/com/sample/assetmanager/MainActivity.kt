@@ -1,6 +1,5 @@
-package com.sample.financemanager
+package com.sample.assetmanager
 
-import android.app.DatePickerDialog
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -30,11 +29,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Home
@@ -46,6 +49,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -65,7 +70,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -85,7 +92,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -93,8 +100,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.sample.financemanager.data.FinanceRecord
-import com.sample.financemanager.ui.theme.FinanceManagerTheme
+import com.sample.assetmanager.data.FinanceRecord
+import com.sample.assetmanager.ui.theme.AssetManagerTheme
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -106,11 +113,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            FinanceManagerTheme {
-                FinanceManagerApp()
+            AssetManagerTheme {
+                AssetManagerApp()
             }
         }
     }
+
 }
 
 enum class MainTab(
@@ -125,7 +133,7 @@ enum class MainTab(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FinanceManagerApp(viewModel: MainViewModel = viewModel()) {
+fun AssetManagerApp(viewModel: MainViewModel = viewModel()) {
     val records by viewModel.records.collectAsStateWithLifecycle()
     val allRecords by viewModel.allRecords.collectAsStateWithLifecycle()
 
@@ -150,13 +158,16 @@ fun FinanceManagerApp(viewModel: MainViewModel = viewModel()) {
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp,
+            ) {
                 MainTab.entries.forEach { tab ->
                     NavigationBarItem(
                         selected = currentTab == tab,
@@ -196,15 +207,11 @@ fun FinanceManagerApp(viewModel: MainViewModel = viewModel()) {
         ) {
             when (currentTab) {
                 MainTab.HOME -> {
-                    if (records.isEmpty()) {
-                        EmptyStateView()
-                    } else {
-                        FinanceRecordList(
-                            records = records,
-                            onEdit = { record -> assetToEdit = record },
-                            onDelete = { record -> recordToDelete = record },
-                        )
-                    }
+                    FinanceRecordList(
+                        records = records,
+                        onEdit = { record -> assetToEdit = record },
+                        onDelete = { record -> recordToDelete = record },
+                    )
                 }
                 MainTab.STATS -> {
                     StatsScreen(records = records, allRecords = allRecords)
@@ -251,31 +258,6 @@ fun FinanceManagerApp(viewModel: MainViewModel = viewModel()) {
 }
 
 @Composable
-fun EmptyStateView() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = "등록된 자산 내역이 없습니다.",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "오른쪽 아래 '+' 버튼을 눌러\n새로운 자산 내역을 추가해보세요.",
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.outline,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-@Composable
 fun FinanceRecordList(
     records: List<FinanceRecord>,
     onEdit: (FinanceRecord) -> Unit,
@@ -298,15 +280,22 @@ fun FinanceRecordList(
         )
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Summary Card
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item(key = "home-banner") {
+            HomeAssetBanner()
+        }
+
+        item(key = "asset-summary") {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
             ),
+            shape = RoundedCornerShape(20.dp),
         ) {
             Row(
                 modifier = Modifier
@@ -329,13 +318,33 @@ fun FinanceRecordList(
                 )
             }
         }
+        }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            items(groupedRecords, key = { (category, _) -> category }) { (category, categoryRecords) ->
+        if (groupedRecords.isEmpty()) {
+            item(key = "empty-home") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 42.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "아직 등록된 자산이 없어요",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "아래 + 버튼으로 첫 자산을 추가해보세요.",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        } else {
+            items(groupedRecords, key = { (category, _) -> "category:$category" }) { (category, categoryRecords) ->
                 CategorySection(
                     category = category,
                     records = categoryRecords,
@@ -345,6 +354,53 @@ fun FinanceRecordList(
                     onDelete = onDelete,
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun HomeAssetBanner() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4F3)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(156.dp)
+                .padding(start = 20.dp, top = 18.dp, end = 12.dp, bottom = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Text(
+                    text = "AssetManager",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 0.8.sp,
+                )
+                Text(
+                    text = "나만의 자산관리",
+                    fontSize = 22.sp,
+                    lineHeight = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "자산의 흐름을 한눈에",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            androidx.compose.foundation.Image(
+                painter = painterResource(R.drawable.asset_banner_illustration),
+                contentDescription = null,
+                modifier = Modifier.size(width = 112.dp, height = 100.dp),
+            )
         }
     }
 }
@@ -385,13 +441,7 @@ fun CategorySection(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    CategoryChip(category = category)
-                    Text(
-                        text = category,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    CategoryChip(category = category, large = true)
                 }
 
                 Row(
@@ -532,26 +582,37 @@ fun FinanceRecordCard(
 }
 
 @Composable
-fun CategoryChip(category: String) {
-    val (backgroundColor, textColor) = when (category) {
-        "부동산" -> Pair(Color(0xFFE3F2FD), Color(0xFF1565C0))
-        "금" -> Pair(Color(0xFFFFF8E1), Color(0xFFF57F17))
-        "자동차" -> Pair(Color(0xFFE8F5E9), Color(0xFF2E7D32))
-        "입출금" -> Pair(Color(0xFFF3E5F5), Color(0xFF7B1FA2))
-        else -> Pair(Color(0xFFECEFF1), Color(0xFF455A64))
+fun CategoryChip(category: String, large: Boolean = false) {
+    val (backgroundColor, textColor, categoryIcon) = when (category) {
+        "부동산" -> Triple(Color(0xFFFCE8E7), Color(0xFF9F3030), Icons.Default.Home)
+        "금" -> Triple(Color(0xFFF5F1EC), Color(0xFF6B4F3A), Icons.Default.Star)
+        "자동차" -> Triple(Color(0xFFF0F0F0), Color(0xFF303030), Icons.Default.DirectionsCar)
+        "입출금" -> Triple(Color(0xFFF8EEEE), Color(0xFF7D2632), Icons.Default.AccountBalanceWallet)
+        else -> Triple(Color(0xFFF1F1F1), Color(0xFF505050), Icons.Default.Category)
     }
 
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(50),
         color = backgroundColor,
     ) {
-        Text(
-            text = category,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = textColor,
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = if (large) 12.dp else 8.dp, vertical = if (large) 8.dp else 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (large) 8.dp else 5.dp),
+        ) {
+            Icon(
+                imageVector = categoryIcon,
+                contentDescription = null,
+                modifier = Modifier.size(if (large) 20.dp else 14.dp),
+                tint = textColor,
+            )
+            Text(
+                text = category,
+                fontSize = if (large) 15.sp else 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = textColor,
+            )
+        }
     }
 }
 
@@ -749,32 +810,10 @@ fun HistoryRecordRow(
     onUpdateRecord: (FinanceRecord) -> Unit,
     onDeleteRecord: () -> Unit,
 ) {
-    val context = LocalContext.current
-
     var valueText by remember(record.value) { mutableStateOf((record.value ?: 0).toString()) }
     var currentDate by remember(record.date) { mutableStateOf(record.date ?: Date()) }
     var isEditingValue by remember { mutableStateOf(false) }
-
-    // DatePicker for row
-    val calendar = remember(currentDate) { Calendar.getInstance().apply { time = currentDate } }
-    val datePickerDialog = remember {
-        DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                val newCal = Calendar.getInstance().apply {
-                    set(Calendar.YEAR, year)
-                    set(Calendar.MONTH, month)
-                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                }
-                val newDate = newCal.time
-                currentDate = newDate
-                onUpdateRecord(record.copy(date = newDate))
-            },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH),
-        )
-    }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -799,7 +838,7 @@ fun HistoryRecordRow(
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                    modifier = Modifier.clickable { datePickerDialog.show() },
+                    modifier = Modifier.clickable { showDatePicker = true },
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -892,6 +931,17 @@ fun HistoryRecordRow(
             }
         }
     }
+
+    if (showDatePicker) {
+        FinanceDatePickerDialog(
+            initialDate = currentDate,
+            onDismiss = { showDatePicker = false },
+            onDateSelected = { newDate ->
+                currentDate = newDate
+                onUpdateRecord(record.copy(date = newDate))
+            },
+        )
+    }
 }
 
 @Composable
@@ -901,30 +951,11 @@ fun AddHistoryRecordDialog(
     onDismiss: () -> Unit,
     onAddRecord: (date: Date, value: Int) -> Unit,
 ) {
-    val context = LocalContext.current
-
     var valueText by remember { mutableStateOf("") }
     var selectedDate by remember { mutableStateOf(Date()) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     val dateFormat = remember { SimpleDateFormat("yyyy년 MM월 dd일", Locale.KOREA) }
-
-    val calendar = remember(selectedDate) { Calendar.getInstance().apply { time = selectedDate } }
-    val datePickerDialog = remember {
-        DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                val newCal = Calendar.getInstance().apply {
-                    set(Calendar.YEAR, year)
-                    set(Calendar.MONTH, month)
-                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                }
-                selectedDate = newCal.time
-            },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH),
-        )
-    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -966,7 +997,7 @@ fun AddHistoryRecordDialog(
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
-                                onClick = { datePickerDialog.show() },
+                                onClick = { showDatePicker = true },
                             ),
                     )
                 }
@@ -1000,6 +1031,14 @@ fun AddHistoryRecordDialog(
             }
         },
     )
+
+    if (showDatePicker) {
+        FinanceDatePickerDialog(
+            initialDate = selectedDate,
+            onDismiss = { showDatePicker = false },
+            onDateSelected = { selectedDate = it },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1009,8 +1048,6 @@ fun AddRecordDialog(
     onDismiss: () -> Unit,
     onAddRecord: (category: String, name: String, value: Int, date: Date) -> Unit,
 ) {
-    val context = LocalContext.current
-
     // Category options setup
     val defaultCategories = remember { listOf("부동산", "금", "자동차", "입출금", "기타") }
     val existingCategories = remember(existingRecords) {
@@ -1063,29 +1100,9 @@ fun AddRecordDialog(
 
     var valueText by remember { mutableStateOf("") }
     var selectedDate by remember { mutableStateOf(Date()) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     val dateFormat = remember { SimpleDateFormat("yyyy년 MM월 dd일", Locale.KOREA) }
-
-    // DatePickerDialog handler
-    val calendar = remember(selectedDate) {
-        Calendar.getInstance().apply { time = selectedDate }
-    }
-    val datePickerDialog = remember {
-        DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                val newCal = Calendar.getInstance().apply {
-                    set(Calendar.YEAR, year)
-                    set(Calendar.MONTH, month)
-                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                }
-                selectedDate = newCal.time
-            },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH),
-        )
-    }
 
     val isInputValid = selectedCategory.isNotBlank() && selectedName.isNotBlank() && valueText.isNotBlank()
 
@@ -1229,7 +1246,7 @@ fun AddRecordDialog(
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
-                                onClick = { datePickerDialog.show() },
+                                onClick = { showDatePicker = true },
                             ),
                     )
                 }
@@ -1332,6 +1349,14 @@ fun AddRecordDialog(
             },
         )
     }
+
+    if (showDatePicker) {
+        FinanceDatePickerDialog(
+            initialDate = selectedDate,
+            onDismiss = { showDatePicker = false },
+            onDateSelected = { selectedDate = it },
+        )
+    }
 }
 
 @Composable
@@ -1379,14 +1404,14 @@ fun StatsScreen(records: List<FinanceRecord>, allRecords: List<FinanceRecord>) {
 
     val chartColors = remember {
         listOf(
-            Color(0xFF3F51B5),
-            Color(0xFF009688),
-            Color(0xFFFF9800),
-            Color(0xFFE91E63),
-            Color(0xFF9C27B0),
-            Color(0xFF4CAF50),
-            Color(0xFF00BCD4),
-            Color(0xFFFFC107),
+            Color(0xFFD93636),
+            Color(0xFF252525),
+            Color(0xFFB64A4A),
+            Color(0xFF666666),
+            Color(0xFF7D2632),
+            Color(0xFFE07777),
+            Color(0xFF3F3F46),
+            Color(0xFFA3442C),
         )
     }
 
@@ -1587,25 +1612,70 @@ data class ChartSlot(
     val endTimestamp: Long,
 )
 
-fun showDatePicker(
-    context: android.content.Context,
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FinanceDatePickerDialog(
     initialDate: Date,
+    onDismiss: () -> Unit,
     onDateSelected: (Date) -> Unit,
 ) {
-    val cal = Calendar.getInstance().apply { time = initialDate }
+    val initialCalendar = remember(initialDate) { Calendar.getInstance().apply { time = initialDate } }
+    val initialUtcMillis = remember(initialDate) {
+        Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+            clear()
+            set(
+                initialCalendar.get(Calendar.YEAR),
+                initialCalendar.get(Calendar.MONTH),
+                initialCalendar.get(Calendar.DAY_OF_MONTH),
+            )
+        }.timeInMillis
+    }
+    val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialUtcMillis)
+
     DatePickerDialog(
-        context,
-        { _, year, month, dayOfMonth ->
-            val resultCal = Calendar.getInstance().apply {
-                set(year, month, dayOfMonth, 0, 0, 0)
-                set(Calendar.MILLISECOND, 0)
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    pickerState.selectedDateMillis?.let { selectedMillis ->
+                        val utcCalendar = Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+                            timeInMillis = selectedMillis
+                        }
+                        val selectedDate = Calendar.getInstance().apply {
+                            clear()
+                            set(
+                                utcCalendar.get(Calendar.YEAR),
+                                utcCalendar.get(Calendar.MONTH),
+                                utcCalendar.get(Calendar.DAY_OF_MONTH),
+                            )
+                        }.time
+                        onDateSelected(selectedDate)
+                    }
+                    onDismiss()
+                },
+            ) {
+                Text("선택", color = MaterialTheme.colorScheme.primary)
             }
-            onDateSelected(resultCal.time)
         },
-        cal.get(Calendar.YEAR),
-        cal.get(Calendar.MONTH),
-        cal.get(Calendar.DAY_OF_MONTH),
-    ).show()
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+    ) {
+        DatePicker(
+            state = pickerState,
+            showModeToggle = false,
+            title = {
+                Text(
+                    text = "날짜 선택",
+                    modifier = Modifier.padding(start = 24.dp, top = 20.dp),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            },
+        )
+    }
 }
 
 fun generateChartSlots(
@@ -1692,8 +1762,6 @@ fun AssetLineChartCard(
     allRecords: List<FinanceRecord>,
     currencyFormat: NumberFormat,
 ) {
-    val context = LocalContext.current
-
     val categoryToItemsMap = remember(allRecords) {
         val defaultCategories = listOf("부동산", "금", "자동차", "입출금", "기타")
         allRecords
@@ -1723,19 +1791,21 @@ fun AssetLineChartCard(
         )
     }
     var endDate by remember { mutableStateOf(Date()) }
+    var showStartDatePicker by remember { mutableStateOf(false) }
+    var showEndDatePicker by remember { mutableStateOf(false) }
 
     val palette = remember {
         listOf(
-            Color(0xFF3F51B5),
-            Color(0xFF009688),
-            Color(0xFFFF9800),
-            Color(0xFFE91E63),
-            Color(0xFF9C27B0),
-            Color(0xFF4CAF50),
-            Color(0xFF00BCD4),
-            Color(0xFFFF5722),
-            Color(0xFF795548),
-            Color(0xFF607D8B),
+            Color(0xFFD93636),
+            Color(0xFF252525),
+            Color(0xFFB64A4A),
+            Color(0xFF666666),
+            Color(0xFF7D2632),
+            Color(0xFFE07777),
+            Color(0xFF3F3F46),
+            Color(0xFFA3442C),
+            Color(0xFF8E5C5C),
+            Color(0xFF909090),
         )
     }
 
@@ -1872,14 +1942,7 @@ fun AssetLineChartCard(
 
                         OutlinedButton(
                             onClick = {
-                                showDatePicker(context, startDate) { selected ->
-                                    if (selected.after(endDate)) {
-                                        startDate = selected
-                                        endDate = selected
-                                    } else {
-                                        startDate = selected
-                                    }
-                                }
+                                showStartDatePicker = true
                             },
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                             modifier = Modifier.height(36.dp),
@@ -1891,14 +1954,7 @@ fun AssetLineChartCard(
 
                         OutlinedButton(
                             onClick = {
-                                showDatePicker(context, endDate) { selected ->
-                                    if (selected.before(startDate)) {
-                                        startDate = selected
-                                        endDate = selected
-                                    } else {
-                                        endDate = selected
-                                    }
-                                }
+                                showEndDatePicker = true
                             },
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                             modifier = Modifier.height(36.dp),
@@ -2214,6 +2270,36 @@ fun AssetLineChartCard(
             }
         }
     }
+
+    if (showStartDatePicker) {
+        FinanceDatePickerDialog(
+            initialDate = startDate,
+            onDismiss = { showStartDatePicker = false },
+            onDateSelected = { selected ->
+                if (selected.after(endDate)) {
+                    startDate = selected
+                    endDate = selected
+                } else {
+                    startDate = selected
+                }
+            },
+        )
+    }
+
+    if (showEndDatePicker) {
+        FinanceDatePickerDialog(
+            initialDate = endDate,
+            onDismiss = { showEndDatePicker = false },
+            onDateSelected = { selected ->
+                if (selected.before(startDate)) {
+                    startDate = selected
+                    endDate = selected
+                } else {
+                    endDate = selected
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -2242,7 +2328,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = "자산 관리자 (Finance Manager)",
+                    text = "나만의 자산관리 AssetManager",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,

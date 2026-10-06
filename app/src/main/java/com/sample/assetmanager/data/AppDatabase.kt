@@ -1,4 +1,4 @@
-package com.sample.financemanager.data
+package com.sample.assetmanager.data
 
 import android.content.Context
 import androidx.room.Database
