@@ -1531,6 +1531,28 @@ fun AddRecordDialog(
     }
 }
 
+private val AssetChartPalette = listOf(
+    Color(0xFFDC2626), // red
+    Color(0xFF2563EB), // blue
+    Color(0xFFCA8A04), // gold
+    Color(0xFF15803D), // green
+    Color(0xFF7E22CE), // purple
+    Color(0xFF0F766E), // teal
+    Color(0xFFEA580C), // orange
+    Color(0xFFBE185D), // pink
+    Color(0xFF0891B2), // cyan
+    Color(0xFF4D7C0F), // lime
+    Color(0xFF4F46E5), // indigo
+    Color(0xFF475569), // slate
+)
+
+private data class DonutSlice(
+    val category: String,
+    val name: String?,
+    val value: Int,
+    val color: Color,
+)
+
 @Composable
 fun StatsScreen(records: List<AssetRecord>, allRecords: List<AssetRecord>) {
     if (records.isEmpty()) {
@@ -1567,25 +1589,76 @@ fun StatsScreen(records: List<AssetRecord>, allRecords: List<AssetRecord>) {
 
     val currencyFormat = remember { NumberFormat.getNumberInstance(Locale.KOREA) }
     val totalValue = remember(records) { records.sumOf { it.value ?: 0 } }
+    var donutDate by remember { mutableStateOf(Date()) }
+    var showDonutDatePicker by remember { mutableStateOf(false) }
+    var showAssetDetails by remember { mutableStateOf(false) }
 
-    val categoryGroup = remember(records) {
-        records.groupBy { it.category.takeIf { c -> !c.isNullOrBlank() } ?: "기타" }
-            .mapValues { (_, list) -> list.sumOf { it.value ?: 0 } }
+    val donutRecords = remember(allRecords, donutDate) {
+        val endOfSelectedDay = Calendar.getInstance().apply {
+            time = donutDate
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }.timeInMillis
+
+        allRecords
+            .filter { it.date != null && it.date.time <= endOfSelectedDay }
+            .groupBy { record ->
+                val category = record.category.takeIf { !it.isNullOrBlank() } ?: "기타"
+                val name = record.name.takeIf { !it.isNullOrBlank() } ?: "이름 없음"
+                category to name
+            }
+            .values
+            .mapNotNull { history -> history.maxByOrNull { it.date?.time ?: Long.MIN_VALUE } }
+            .filter { it.value != null }
+    }
+    val donutTotal = remember(donutRecords) { donutRecords.sumOf { it.value ?: 0 } }
+    val donutCategoryGroups = remember(donutRecords) {
+        donutRecords
+            .groupBy { it.category.takeIf { category -> !category.isNullOrBlank() } ?: "기타" }
+            .mapValues { (_, categoryRecords) -> categoryRecords.sumOf { it.value ?: 0 } }
             .entries.sortedByDescending { it.value }
     }
-
-    val chartColors = remember {
-        listOf(
-            Color(0xFFD93636),
-            Color(0xFF252525),
-            Color(0xFFB64A4A),
-            Color(0xFF666666),
-            Color(0xFF7D2632),
-            Color(0xFFE07777),
-            Color(0xFF3F3F46),
-            Color(0xFFA3442C),
-        )
+    val chartItemKeys = remember(allRecords) {
+        val defaultCategories = listOf("부동산", "금", "자동차", "입출금", "기타")
+        allRecords
+            .filter { !it.name.isNullOrBlank() }
+            .groupBy { it.category.takeIf { category -> !category.isNullOrBlank() } ?: "기타" }
+            .mapValues { (_, categoryRecords) ->
+                categoryRecords.mapNotNull { it.name?.takeIf(String::isNotBlank) }.distinct()
+            }
+            .entries
+            .sortedWith(compareBy { (category, _) ->
+                val index = defaultCategories.indexOf(category)
+                if (index != -1) index else Int.MAX_VALUE
+            })
+            .flatMap { (category, names) -> names.map { ChartItemKey(category, it) } }
     }
+    val itemColors = remember(chartItemKeys) {
+        chartItemKeys.mapIndexed { index, item -> item to AssetChartPalette[index % AssetChartPalette.size] }.toMap()
+    }
+    val donutSlices = remember(donutRecords, donutCategoryGroups, showAssetDetails, itemColors) {
+        if (showAssetDetails) {
+            donutRecords.map { record ->
+                val category = record.category.takeIf { !it.isNullOrBlank() } ?: "기타"
+                val name = record.name.takeIf { !it.isNullOrBlank() } ?: "이름 없음"
+                val key = ChartItemKey(category, name)
+                DonutSlice(category, name, record.value ?: 0, itemColors[key] ?: AssetChartPalette[0])
+            }.sortedWith(
+                compareBy<DonutSlice>(
+                    { slice -> donutCategoryGroups.indexOfFirst { it.key == slice.category } },
+                    { slice -> slice.name.orEmpty() },
+                ),
+            )
+        } else {
+            donutCategoryGroups.mapIndexed { index, (category, value) ->
+                DonutSlice(category, null, value, AssetChartPalette[index % AssetChartPalette.size])
+            }
+        }
+    }
+    val donutValueTotal = remember(donutSlices) { donutSlices.sumOf { it.value.coerceAtLeast(0) } }
+    val dateFormat = remember { SimpleDateFormat("yyyy.MM.dd", Locale.KOREA) }
 
     Column(
         modifier = Modifier
@@ -1650,6 +1723,43 @@ fun StatsScreen(records: List<AssetRecord>, allRecords: List<AssetRecord>) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("기준 날짜", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    OutlinedButton(
+                        onClick = { showDonutDatePicker = true },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(36.dp),
+                    ) {
+                        Text(dateFormat.format(donutDate), fontSize = 12.sp)
+                    }
+                }
+
+                FilterChip(
+                    selected = showAssetDetails,
+                    onClick = { showAssetDetails = !showAssetDetails },
+                    label = { Text("세부 자산 항목 표시") },
+                    leadingIcon = if (showAssetDetails) {
+                        {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    } else null,
+                )
+                if (showAssetDetails) {
+                    Text(
+                        text = "세부 항목의 비율은 각 카테고리 내부 기준입니다.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+
                 // Canvas Donut Chart
                 Box(
                     modifier = Modifier
@@ -1663,13 +1773,12 @@ fun StatsScreen(records: List<AssetRecord>, allRecords: List<AssetRecord>) {
                         var startAngle = -90f
                         val strokeWidth = 36.dp.toPx()
 
-                        if (totalValue > 0) {
-                            categoryGroup.forEachIndexed { index, (_, categorySum) ->
-                                val sweepAngle = (categorySum.toFloat() / totalValue.toFloat()) * 360f
-                                val color = chartColors[index % chartColors.size]
+                        if (donutValueTotal > 0) {
+                            donutSlices.filter { it.value > 0 }.forEach { slice ->
+                                val sweepAngle = (slice.value.toFloat() / donutValueTotal.toFloat()) * 360f
 
                                 drawArc(
-                                    color = color,
+                                    color = slice.color,
                                     startAngle = startAngle,
                                     sweepAngle = sweepAngle,
                                     useCenter = false,
@@ -1682,12 +1791,12 @@ fun StatsScreen(records: List<AssetRecord>, allRecords: List<AssetRecord>) {
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "총 자산",
+                            text = "${dateFormat.format(donutDate)} 기준",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.outline,
                         )
                         Text(
-                            text = "${currencyFormat.format(totalValue)} 원",
+                            text = "${currencyFormat.format(donutTotal)} 원",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1697,64 +1806,116 @@ fun StatsScreen(records: List<AssetRecord>, allRecords: List<AssetRecord>) {
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                // Category Percentage List & Progress Bars
+                // Category or asset percentages
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    categoryGroup.forEachIndexed { index, (category, categorySum) ->
-                        val percentage = if (totalValue > 0) (categorySum.toDouble() / totalValue.toDouble()) * 100 else 0.0
-                        val color = chartColors[index % chartColors.size]
+                    donutCategoryGroups.forEachIndexed { categoryIndex, (category, categorySum) ->
+                        val categoryPercentage = if (donutValueTotal > 0) {
+                            categorySum.coerceAtLeast(0).toDouble() / donutValueTotal * 100
+                        } else 0.0
+                        val categoryColor = AssetChartPalette[categoryIndex % AssetChartPalette.size]
 
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
+                        if (!showAssetDetails) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(12.dp)
-                                            .background(color, shape = RoundedCornerShape(3.dp)),
-                                    )
-                                    Text(
-                                        text = category,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(12.dp)
+                                                .background(categoryColor, shape = RoundedCornerShape(3.dp)),
+                                        )
+                                        Text(category, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            "${currencyFormat.format(categorySum)} 원",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                        Text(
+                                            "(${String.format(Locale.KOREA, "%.1f", categoryPercentage)}%)",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.outline,
+                                        )
+                                    }
                                 }
+                                LinearProgressIndicator(
+                                    progress = { (categoryPercentage / 100.0).toFloat() },
+                                    modifier = Modifier.fillMaxWidth().height(8.dp),
+                                    color = categoryColor,
+                                    trackColor = categoryColor.copy(alpha = 0.2f),
+                                    drawStopIndicator = {},
+                                )
+                            }
+                        } else {
+                            val categorySlices = donutSlices.filter { it.category == category && it.value > 0 }
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
+                                    Text(category, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                     Text(
-                                        text = "${currencyFormat.format(categorySum)} 원",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                    )
-                                    Text(
-                                        text = "(${String.format(Locale.KOREA, "%.1f", percentage)}%)",
+                                        "${currencyFormat.format(categorySum)} 원 (${String.format(Locale.KOREA, "%.1f", categoryPercentage)}%)",
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.outline,
                                     )
                                 }
+                                val positiveCategoryTotal = categorySlices.sumOf { it.value }
+                                categorySlices.forEach { slice ->
+                                    val withinCategoryPercentage = if (positiveCategoryTotal > 0) {
+                                        slice.value.toDouble() / positiveCategoryTotal * 100
+                                    } else 0.0
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(start = 12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(10.dp)
+                                                    .background(slice.color, shape = RoundedCornerShape(2.dp)),
+                                            )
+                                            Text(slice.name ?: "이름 없음", fontSize = 13.sp)
+                                        }
+                                        Text(
+                                            "${currencyFormat.format(slice.value)} 원 (${String.format(Locale.KOREA, "%.1f", withinCategoryPercentage)}%)",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
                             }
-
-                            LinearProgressIndicator(
-                                progress = { (percentage / 100.0).toFloat() },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(8.dp),
-                                color = color,
-                                trackColor = color.copy(alpha = 0.2f),
-                                drawStopIndicator = {},
-                            )
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showDonutDatePicker) {
+        AssetDatePickerDialog(
+            initialDate = donutDate,
+            onDismiss = { showDonutDatePicker = false },
+            onDateSelected = {
+                donutDate = it
+                showDonutDatePicker = false
+            },
+        )
     }
 }
 
@@ -1782,6 +1943,11 @@ data class ChartSlot(
     val key: String,
     val label: String,
     val endTimestamp: Long,
+)
+
+private data class ChartItemKey(
+    val category: String,
+    val name: String,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1949,11 +2115,13 @@ fun AssetLineChartCard(
             })
     }
 
-    val itemNames = remember(categoryToItemsMap) {
-        categoryToItemsMap.flatMap { it.value }.distinct()
+    val chartItems = remember(categoryToItemsMap) {
+        categoryToItemsMap.flatMap { (category, names) ->
+            names.map { name -> ChartItemKey(category, name) }
+        }
     }
 
-    var activeItems by remember(itemNames) { mutableStateOf(itemNames.toSet()) }
+    var activeItems by remember(chartItems) { mutableStateOf(chartItems.toSet()) }
     var showTotalLine by remember { mutableStateOf(true) }
 
     var granularity by remember { mutableStateOf(TimeGranularity.MONTHLY) }
@@ -1966,24 +2134,11 @@ fun AssetLineChartCard(
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }
 
-    val palette = remember {
-        listOf(
-            Color(0xFFD93636),
-            Color(0xFF252525),
-            Color(0xFFB64A4A),
-            Color(0xFF666666),
-            Color(0xFF7D2632),
-            Color(0xFFE07777),
-            Color(0xFF3F3F46),
-            Color(0xFFA3442C),
-            Color(0xFF8E5C5C),
-            Color(0xFF909090),
-        )
-    }
+    val palette = AssetChartPalette
 
-    val itemColorMap = remember(itemNames, palette) {
-        itemNames.mapIndexed { index, name ->
-            name to palette[index % palette.size]
+    val itemColorMap = remember(chartItems, palette) {
+        chartItems.mapIndexed { index, item ->
+            item to palette[index % palette.size]
         }.toMap()
     }
 
@@ -1991,33 +2146,34 @@ fun AssetLineChartCard(
         generateChartSlots(startDate, endDate, granularity)
     }
 
-    val itemSlotValues = remember(allRecords, itemNames, slots) {
-        val map = mutableMapOf<Pair<String, Int>, Long>()
+    val itemSlotValues = remember(allRecords, chartItems, slots) {
+        val map = mutableMapOf<Pair<ChartItemKey, Int>, Long>()
         slots.forEachIndexed { slotIndex, slot ->
-            itemNames.forEach { itemName ->
+            chartItems.forEach { item ->
                 val recordsUpToSlot = allRecords.filter { record ->
-                    record.name == itemName &&
+                    (record.category.takeIf { category -> !category.isNullOrBlank() } ?: "기타") == item.category &&
+                    record.name == item.name &&
                     record.date != null &&
                     record.date.time <= slot.endTimestamp
                 }
                 val latest = recordsUpToSlot.maxByOrNull { it.date?.time ?: 0L }
-                map[itemName to slotIndex] = (latest?.value ?: 0).toLong()
+                map[item to slotIndex] = (latest?.value ?: 0).toLong()
             }
         }
         map
     }
 
     val activeItemSeries = remember(activeItems, itemSlotValues, slots) {
-        activeItems.associateWith { itemName ->
+        activeItems.associateWith { item ->
             slots.indices.map { slotIndex ->
-                itemSlotValues[itemName to slotIndex] ?: 0L
+                itemSlotValues[item to slotIndex] ?: 0L
             }
         }
     }
 
     val totalSeries = remember(activeItems, itemSlotValues, slots) {
         slots.indices.map { slotIndex ->
-            activeItems.sumOf { itemName -> itemSlotValues[itemName to slotIndex] ?: 0L }
+            activeItems.sumOf { item -> itemSlotValues[item to slotIndex] ?: 0L }
         }
     }
 
@@ -2170,7 +2326,8 @@ fun AssetLineChartCard(
                 }
 
                 categoryToItemsMap.forEach { (category, items) ->
-                    val allCategoryActive = items.all { activeItems.contains(it) }
+                    val categoryItems = items.map { name -> ChartItemKey(category, name) }
+                    val allCategoryActive = categoryItems.all { it in activeItems }
 
                     Row(
                         modifier = Modifier
@@ -2182,9 +2339,9 @@ fun AssetLineChartCard(
                         Surface(
                             onClick = {
                                 activeItems = if (allCategoryActive) {
-                                    activeItems - items.toSet()
+                                    activeItems - categoryItems.toSet()
                                 } else {
-                                    activeItems + items.toSet()
+                                    activeItems + categoryItems.toSet()
                                 }
                             },
                             shape = RoundedCornerShape(8.dp),
@@ -2206,16 +2363,17 @@ fun AssetLineChartCard(
                         }
 
                         items.forEach { itemName ->
-                            val isSelected = activeItems.contains(itemName)
-                            val chipColor = itemColorMap[itemName] ?: primaryColor
+                            val itemKey = ChartItemKey(category, itemName)
+                            val isSelected = itemKey in activeItems
+                            val chipColor = itemColorMap[itemKey] ?: primaryColor
 
                             FilterChip(
                                 selected = isSelected,
                                 onClick = {
                                     activeItems = if (isSelected) {
-                                        activeItems - itemName
+                                        activeItems - itemKey
                                     } else {
-                                        activeItems + itemName
+                                        activeItems + itemKey
                                     }
                                 },
                                 label = {
@@ -2301,8 +2459,8 @@ fun AssetLineChartCard(
                     val slotCount = slots.size
 
                     // 1. Draw Active Individual Item Lines
-                    activeItemSeries.forEach { (itemName, values) ->
-                        val color = itemColorMap[itemName] ?: primaryColor
+                    activeItemSeries.forEach { (item, values) ->
+                        val color = itemColorMap[item] ?: primaryColor
                         val points = values.mapIndexed { index, value ->
                             val x = paddingLeft + (index.toFloat() / (slotCount - 1).coerceAtLeast(1)) * chartWidth
                             val normalized = ((value - minVal).toFloat() / range.toFloat())
