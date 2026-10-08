@@ -4,7 +4,7 @@
     "type": "APK",
     "kind": "Directory"
   },
-  "applicationId": "com.lgtm.assetmanager",
+  "applicationId": "com.lgtm.asset_manager",
   "variantName": "release",
   "elements": [
     {
@@ -13,7 +13,7 @@
       "attributes": [],
       "versionCode": 3,
       "versionName": "1.1.0",
-      "outputFile": "AssetManager-release.apk"
+      "outputFile": "Asset Manager-release.apk"
     }
   ],
   "elementType": "File",
@@ -22,14 +22,14 @@
       "minApi": 28,
       "maxApi": 30,
       "baselineProfiles": [
-        "baselineProfiles/1/AssetManager-release.dm"
+        "baselineProfiles/1/Asset Manager-release.dm"
       ]
     },
     {
       "minApi": 31,
       "maxApi": 2147483647,
       "baselineProfiles": [
-        "baselineProfiles/0/AssetManager-release.dm"
+        "baselineProfiles/0/Asset Manager-release.dm"
       ]
     }
   ],

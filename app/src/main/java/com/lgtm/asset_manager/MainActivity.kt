@@ -1,4 +1,4 @@
-package com.lgtm.assetmanager
+package com.lgtm.asset_manager
 
 import android.content.ClipData
 import android.content.Intent
@@ -116,9 +116,9 @@ import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
-import com.lgtm.assetmanager.data.AssetRecord
-import com.lgtm.assetmanager.data.AssetCsv
-import com.lgtm.assetmanager.ui.theme.AssetManagerTheme
+import com.lgtm.asset_manager.data.AssetRecord
+import com.lgtm.asset_manager.data.AssetCsv
+import com.lgtm.asset_manager.ui.theme.Asset_ManagerTheme
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -142,8 +142,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent {
-            AssetManagerTheme {
-                AssetManagerApp(showAds = adsReady.value)
+            Asset_ManagerTheme {
+                Asset_ManagerApp(showAds = adsReady.value)
             }
         }
     }
@@ -202,7 +202,7 @@ enum class MainTab(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AssetManagerApp(
+fun Asset_ManagerApp(
     showAds: Boolean = true,
     viewModel: MainViewModel = viewModel(),
 ) {
@@ -549,7 +549,7 @@ fun HomeAssetBanner() {
                 verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 Text(
-                    text = "AssetManager",
+                    text = "Asset Manager",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
@@ -2660,7 +2660,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = "나만의 자산관리 AssetManager",
+                    text = "나만의 자산관리 Asset Manager",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,

@@ -1,4 +1,4 @@
-package com.lgtm.assetmanager
+package com.lgtm.asset_manager
 
 import org.junit.Test
 

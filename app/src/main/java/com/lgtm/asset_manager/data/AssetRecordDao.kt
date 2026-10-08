@@ -1,4 +1,4 @@
-package com.lgtm.assetmanager.data
+package com.lgtm.asset_manager.data
 
 import androidx.room.Dao
 import androidx.room.Delete

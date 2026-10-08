@@ -1,10 +1,10 @@
-package com.lgtm.assetmanager
+package com.lgtm.asset_manager
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.lgtm.assetmanager.data.AppDatabase
-import com.lgtm.assetmanager.data.AssetRecord
+import com.lgtm.asset_manager.data.AppDatabase
+import com.lgtm.asset_manager.data.AssetRecord
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow

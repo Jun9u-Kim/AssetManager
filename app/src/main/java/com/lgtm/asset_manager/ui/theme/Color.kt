@@ -1,4 +1,4 @@
-package com.lgtm.assetmanager.ui.theme
+package com.lgtm.asset_manager.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

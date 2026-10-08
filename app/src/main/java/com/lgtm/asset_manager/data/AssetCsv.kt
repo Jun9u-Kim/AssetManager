@@ -1,4 +1,4 @@
-package com.lgtm.assetmanager.data
+package com.lgtm.asset_manager.data
 
 import java.io.InputStream
 import java.time.OffsetDateTime

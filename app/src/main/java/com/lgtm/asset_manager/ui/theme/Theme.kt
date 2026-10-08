@@ -1,4 +1,4 @@
-package com.lgtm.assetmanager.ui.theme
+package com.lgtm.asset_manager.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
@@ -26,7 +26,7 @@ private val AssetColorScheme = lightColorScheme(
 )
 
 @Composable
-fun AssetManagerTheme(content: @Composable () -> Unit) {
+fun Asset_ManagerTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = AssetColorScheme,
         typography = Typography,

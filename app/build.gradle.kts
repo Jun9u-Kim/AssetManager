@@ -5,13 +5,13 @@ plugins {
 }
 
 android {
-    namespace = "com.lgtm.assetmanager"
+    namespace = "com.lgtm.asset_manager"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.lgtm.assetmanager"
+        applicationId = "com.lgtm.asset_manager"
         minSdk = 24
         targetSdk = 37
         versionCode = 4
@@ -41,7 +41,7 @@ android {
 androidComponents {
     onVariants { variant ->
         variant.outputs.forEach { output ->
-            output.outputFileName.set("AssetManager-${variant.name}.apk")
+            output.outputFileName.set("Asset Manager-${variant.name}.apk")
         }
     }
 }
