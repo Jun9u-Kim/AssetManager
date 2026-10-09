@@ -37,6 +37,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
@@ -90,6 +92,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
@@ -2100,6 +2103,10 @@ fun AssetLineChartCard(
     allRecords: List<AssetRecord>,
     currencyFormat: NumberFormat,
 ) {
+    val context = LocalContext.current
+    val chartPreferences = remember(context) {
+        context.getSharedPreferences("asset_chart_preferences", android.content.Context.MODE_PRIVATE)
+    }
     val categoryToItemsMap = remember(allRecords) {
         val defaultCategories = listOf("부동산", "금", "자동차", "입출금", "기타")
         allRecords
@@ -2121,8 +2128,36 @@ fun AssetLineChartCard(
         }
     }
 
-    var activeItems by remember(chartItems) { mutableStateOf(chartItems.toSet()) }
-    var showTotalLine by remember { mutableStateOf(true) }
+    fun itemPreferenceKey(item: ChartItemKey) = "${item.category.length}:${item.category}${item.name}"
+    val knownItemKeys = remember(chartItems) { chartItems.mapTo(mutableSetOf(), ::itemPreferenceKey) }
+    val savedKnownItemKeys = remember(chartPreferences) {
+        chartPreferences.getStringSet("known_items", emptySet())?.toSet().orEmpty()
+    }
+    val savedActiveItemKeys = remember(chartPreferences) {
+        chartPreferences.getStringSet("active_items", emptySet())?.toSet().orEmpty()
+    }
+    var activeItems: Set<ChartItemKey> by remember(chartItems, savedKnownItemKeys, savedActiveItemKeys) {
+        mutableStateOf(
+            chartItems.filterTo(mutableSetOf()) { item ->
+                val key = itemPreferenceKey(item)
+                key !in savedKnownItemKeys || key in savedActiveItemKeys
+            },
+        )
+    }
+    var showTotalLine by remember(chartPreferences) {
+        mutableStateOf(chartPreferences.getBoolean("show_total_line", true))
+    }
+    var chartSeriesOptionsExpanded by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(activeItems, showTotalLine, knownItemKeys) {
+        if (knownItemKeys.isEmpty()) return@LaunchedEffect
+        val activeKeys = activeItems.mapTo(mutableSetOf(), ::itemPreferenceKey)
+        chartPreferences.edit()
+            .putStringSet("known_items", knownItemKeys)
+            .putStringSet("active_items", activeKeys)
+            .putBoolean("show_total_line", showTotalLine)
+            .apply()
+    }
 
     var granularity by remember { mutableStateOf(TimeGranularity.MONTHLY) }
     var startDate by remember {
@@ -2300,6 +2335,35 @@ fun AssetLineChartCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clickable { chartSeriesOptionsExpanded = !chartSeriesOptionsExpanded }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "그래프 표시 항목",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = "합계 ${if (showTotalLine) "켜짐" else "꺼짐"} · 자산 ${activeItems.size}/${chartItems.size}개",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Icon(
+                        imageVector = if (chartSeriesOptionsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (chartSeriesOptionsExpanded) "그래프 표시 항목 접기" else "그래프 표시 항목 펼치기",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                if (chartSeriesOptionsExpanded) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -2398,6 +2462,7 @@ fun AssetLineChartCard(
                             )
                         }
                     }
+                }
                 }
             }
 
