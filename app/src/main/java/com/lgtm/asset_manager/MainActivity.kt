@@ -600,6 +600,7 @@ fun CategorySection(
     onEdit: (AssetRecord) -> Unit,
     onDelete: (AssetRecord) -> Unit,
 ) {
+    var expanded by rememberSaveable(category) { mutableStateOf(false) }
     val categoryTotal = remember(records) {
         records.sumOf { it.value ?: 0 }
     }
@@ -619,7 +620,9 @@ fun CategorySection(
         ) {
             // Category Section Header (Top of Category Region)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -646,20 +649,28 @@ fun CategorySection(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
+
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (expanded) "${category} 접기" else "${category} 펼치기",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
 
             // Asset records under this category
-            records.forEach { record ->
-                AssetRecordCard(
-                    record = record,
-                    previousRecord = previousRecords[record.category to record.name],
-                    currencyFormat = currencyFormat,
-                    dateFormat = dateFormat,
-                    onEdit = { onEdit(record) },
-                    onDelete = { onDelete(record) },
-                )
+            if (expanded) {
+                records.forEach { record ->
+                    AssetRecordCard(
+                        record = record,
+                        previousRecord = previousRecords[record.category to record.name],
+                        currencyFormat = currencyFormat,
+                        dateFormat = dateFormat,
+                        onEdit = { onEdit(record) },
+                        onDelete = { onDelete(record) },
+                    )
+                }
             }
         }
     }
