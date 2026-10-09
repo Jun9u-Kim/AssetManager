@@ -349,6 +349,7 @@ fun Asset_ManagerApp(
                 MainTab.HOME -> {
                     AssetRecordList(
                         records = records,
+                        allRecords = allRecords,
                         onEdit = { record -> assetToEdit = record },
                         onDelete = { record -> recordToDelete = record },
                     )
@@ -435,6 +436,7 @@ fun Asset_ManagerApp(
 @Composable
 fun AssetRecordList(
     records: List<AssetRecord>,
+    allRecords: List<AssetRecord>,
     onEdit: (AssetRecord) -> Unit,
     onDelete: (AssetRecord) -> Unit,
 ) {
@@ -443,6 +445,13 @@ fun AssetRecordList(
     }
     val currencyFormat = remember { NumberFormat.getNumberInstance(Locale.KOREA) }
     val dateFormat = remember { SimpleDateFormat("yyyy.MM.dd", Locale.KOREA) }
+    val previousRecords = remember(allRecords) {
+        allRecords
+            .groupBy { it.category to it.name }
+            .mapValues { (_, history) ->
+                history.sortedByDescending { it.date?.time ?: Long.MIN_VALUE }.getOrNull(1)
+            }
+    }
 
     val defaultCategories = remember { listOf("부동산", "금", "자동차", "입출금", "기타") }
     val groupedRecords = remember(records) {
@@ -523,6 +532,7 @@ fun AssetRecordList(
                 CategorySection(
                     category = category,
                     records = categoryRecords,
+                    previousRecords = previousRecords,
                     currencyFormat = currencyFormat,
                     dateFormat = dateFormat,
                     onEdit = onEdit,
@@ -584,6 +594,7 @@ fun HomeAssetBanner() {
 fun CategorySection(
     category: String,
     records: List<AssetRecord>,
+    previousRecords: Map<Pair<String?, String?>, AssetRecord?>,
     currencyFormat: NumberFormat,
     dateFormat: SimpleDateFormat,
     onEdit: (AssetRecord) -> Unit,
@@ -643,6 +654,7 @@ fun CategorySection(
             records.forEach { record ->
                 AssetRecordCard(
                     record = record,
+                    previousRecord = previousRecords[record.category to record.name],
                     currencyFormat = currencyFormat,
                     dateFormat = dateFormat,
                     onEdit = { onEdit(record) },
@@ -656,6 +668,7 @@ fun CategorySection(
 @Composable
 fun AssetRecordCard(
     record: AssetRecord,
+    previousRecord: AssetRecord?,
     currencyFormat: NumberFormat,
     dateFormat: SimpleDateFormat,
     onEdit: () -> Unit,
@@ -715,6 +728,18 @@ fun AssetRecordCard(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
+            val previousValue = previousRecord?.value
+            val currentValue = (record.value ?: 0).toLong()
+            val difference = previousRecord?.let { currentValue - (previousValue ?: 0).toLong() }
+            val changeRate = difference?.let { change ->
+                previousValue?.takeIf { it != 0 }?.let { change.toDouble() / it.toDouble() * 100.0 }
+            }
+            val changeColor = when {
+                difference != null && difference > 0 -> Color(0xFFD32F2F)
+                difference != null && difference < 0 -> Color(0xFF1976D2)
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+
             // Line 2 (Middle): Value Amount
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -726,12 +751,42 @@ fun AssetRecordCard(
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.outline,
                 )
-                Text(
-                    text = "${currencyFormat.format(record.value ?: 0)} 원",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = buildString {
+                            append(currencyFormat.format(record.value ?: 0))
+                            append(" 원")
+                            if (changeRate != null) {
+                                append(" (")
+                                append(if (changeRate > 0) "+" else "")
+                                append(String.format(Locale.KOREA, "%.1f", changeRate))
+                                append("%)")
+                            }
+                        },
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (difference == null) MaterialTheme.colorScheme.primary else changeColor,
+                    )
+                    if (difference != null) {
+                        Text(
+                            text = buildString {
+                                append("전회 대비 ")
+                                append(if (difference > 0) "+" else "")
+                                append(currencyFormat.format(difference))
+                                append("원")
+                            },
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = changeColor,
+                        )
+                    } else {
+                        Text(
+                            text = "직전 기록 없음",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                }
             }
 
             // Line 3 (Bottom): Date
@@ -741,7 +796,7 @@ fun AssetRecordCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "기준일",
+                    text = "기록일",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.outline,
                 )
@@ -752,6 +807,7 @@ fun AssetRecordCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
         }
     }
 }
