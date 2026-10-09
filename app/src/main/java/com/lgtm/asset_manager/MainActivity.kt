@@ -172,7 +172,7 @@ private fun AdMobBanner() {
                     adUnitId = if (BuildConfig.DEBUG) {
                         "ca-app-pub-3940256099942544/9214589741"
                     } else {
-                        "ca-app-pub-7916608815143603/8737088103"
+                        "ca-app-pub-3598334831467233/3045917343"
                     }
                     setAdSize(adSize)
                 }

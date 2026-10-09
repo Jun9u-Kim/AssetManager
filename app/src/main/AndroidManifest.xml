@@ -13,7 +13,7 @@
         android:theme="@style/Theme.Asset_Manager">
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-7916608815143603~6548899302" />
+            android:value="ca-app-pub-3598334831467233~5814627476" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
