@@ -2940,7 +2940,7 @@ fun SettingsScreen(
                         fontSize = 15.sp,
                     )
                     Text(
-                        text = "1.1.0",
+                        text = BuildConfig.VERSION_NAME,
                         fontSize = 15.sp,
                         color = MaterialTheme.colorScheme.outline,
                     )
