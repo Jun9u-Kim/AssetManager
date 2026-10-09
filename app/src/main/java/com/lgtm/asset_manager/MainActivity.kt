@@ -44,11 +44,13 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.AlertDialog
@@ -200,6 +202,7 @@ enum class MainTab(
 ) {
     HOME("홈", Icons.Filled.Home, Icons.Outlined.Home),
     STATS("통계/차트", Icons.Filled.BarChart, Icons.Outlined.BarChart),
+    NEWS("경제 뉴스", Icons.Filled.Article, Icons.Outlined.Article),
     SETTINGS("설정", Icons.Filled.Settings, Icons.Outlined.Settings),
 }
 
@@ -288,6 +291,7 @@ fun Asset_ManagerApp(
                         text = when (currentTab) {
                             MainTab.HOME -> "자산 관리"
                             MainTab.STATS -> "통계 및 차트"
+                            MainTab.NEWS -> "경제 뉴스"
                             MainTab.SETTINGS -> "설정"
                         },
                         fontWeight = FontWeight.Bold,
@@ -356,6 +360,9 @@ fun Asset_ManagerApp(
                 }
                 MainTab.STATS -> {
                     StatsScreen(records = records, allRecords = allRecords)
+                }
+                MainTab.NEWS -> {
+                    EconomyNewsScreen()
                 }
                 MainTab.SETTINGS -> {
                     SettingsScreen(
