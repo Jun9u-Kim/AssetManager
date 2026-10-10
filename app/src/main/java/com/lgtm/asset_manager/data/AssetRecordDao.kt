@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
+import java.util.Date
 
 @Dao
 interface AssetRecordDao {
@@ -16,8 +17,14 @@ interface AssetRecordDao {
     @Query("SELECT * FROM asset_records WHERE uid = :uid")
     suspend fun getById(uid: Int): AssetRecord?
 
-    @Query("SELECT * FROM asset_records WHERE category = :category AND name = :name ORDER BY date DESC")
+    @Query("SELECT * FROM asset_records WHERE category = :category AND name = :name ORDER BY date DESC, uid DESC")
     fun getRecordsByCategoryAndName(category: String, name: String): Flow<List<AssetRecord>>
+
+    @Query("SELECT * FROM asset_records WHERE category = :category AND name = :name AND date <= :date ORDER BY date DESC, uid DESC LIMIT 1")
+    suspend fun getMostRecentRecordOnOrBefore(category: String, name: String, date: Date): AssetRecord?
+
+    @Query("SELECT * FROM asset_records WHERE category = :category AND name = :name AND date > :date ORDER BY date ASC, uid ASC")
+    suspend fun getRecordsAfter(category: String, name: String, date: Date): List<AssetRecord>
 
     @Query("UPDATE asset_records SET category = :newCategory, name = :newName WHERE category = :oldCategory AND name = :oldName")
     suspend fun updateAssetCategoryAndName(oldCategory: String, oldName: String, newCategory: String, newName: String)

@@ -123,6 +123,8 @@ import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
 import com.lgtm.asset_manager.data.AssetRecord
 import com.lgtm.asset_manager.data.AssetCsv
+import com.lgtm.asset_manager.data.BudgetWorkbook
+import com.lgtm.asset_manager.data.WorkbookImport
 import com.lgtm.asset_manager.ui.theme.Asset_ManagerTheme
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -130,6 +132,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.io.File
+import java.io.ByteArrayInputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -201,6 +204,7 @@ enum class MainTab(
     val unselectedIcon: ImageVector,
 ) {
     HOME("홈", Icons.Filled.Home, Icons.Outlined.Home),
+    BUDGET("가계부", Icons.Filled.AccountBalanceWallet, Icons.Filled.AccountBalanceWallet),
     STATS("통계/차트", Icons.Filled.BarChart, Icons.Outlined.BarChart),
     NEWS("경제 뉴스", Icons.Filled.Article, Icons.Outlined.Article),
     SETTINGS("설정", Icons.Filled.Settings, Icons.Outlined.Settings),
@@ -214,25 +218,34 @@ fun Asset_ManagerApp(
 ) {
     val records by viewModel.records.collectAsStateWithLifecycle()
     val allRecords by viewModel.allRecords.collectAsStateWithLifecycle()
+    val expenseEntries by viewModel.expenseEntries.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    var pendingCsvImport by remember { mutableStateOf<List<AssetRecord>?>(null) }
-    val csvImportLauncher = rememberLauncherForActivityResult(
+    var pendingWorkbookImport by remember { mutableStateOf<WorkbookImport?>(null) }
+    val workbookImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
             coroutineScope.launch {
                 runCatching {
                     withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.use(AssetCsv::decode)
+                        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                             ?: error("선택한 파일을 열 수 없습니다.")
+                        if (bytes.take(2) == listOf(0x50.toByte(), 0x4B.toByte())) {
+                            BudgetWorkbook.decode(ByteArrayInputStream(bytes))
+                        } else {
+                            WorkbookImport(
+                                assets = AssetCsv.decode(ByteArrayInputStream(bytes)),
+                                budget = emptyList(),
+                            )
+                        }
                     }
                 }.onSuccess { imported ->
-                    pendingCsvImport = imported
+                    pendingWorkbookImport = imported
                 }.onFailure { error ->
                     Toast.makeText(
                         context,
-                        error.message ?: "CSV 파일을 읽지 못했습니다.",
+                        error.message ?: "파일을 읽지 못했습니다.",
                         Toast.LENGTH_LONG,
                     ).show()
                 }
@@ -240,36 +253,37 @@ fun Asset_ManagerApp(
         }
     }
 
-    fun shareCsvFile() {
+    fun shareWorkbook() {
         coroutineScope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
                     val recordsToExport = viewModel.getAllRecordsSnapshot()
+                    val budgetToExport = viewModel.getExpenseEntriesSnapshot()
                     val exportDirectory = File(context.cacheDir, "exports").apply { mkdirs() }
-                    val csvFile = File(exportDirectory, "asset_records_${System.currentTimeMillis()}.csv")
-                    csvFile.writeText(AssetCsv.encode(recordsToExport), Charsets.UTF_8)
+                    val workbookFile = File(exportDirectory, "asset_manager_${System.currentTimeMillis()}.xlsx")
+                    workbookFile.writeBytes(BudgetWorkbook.encode(recordsToExport, budgetToExport))
                     FileProvider.getUriForFile(
                         context,
                         "${context.packageName}.fileprovider",
-                        csvFile,
+                        workbookFile,
                     )
                 }
             }.onSuccess { uri ->
                 val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "application/vnd.ms-excel"
+                    type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     putExtra(Intent.EXTRA_STREAM, uri)
                     clipData = ClipData(
-                        "CSV 파일",
-                        arrayOf("application/vnd.ms-excel"),
+                        "Excel 파일",
+                        arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
                         ClipData.Item(uri),
                     )
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(Intent.createChooser(sendIntent, "CSV 파일 공유"))
+                context.startActivity(Intent.createChooser(sendIntent, "Excel 파일 공유"))
             }.onFailure { error ->
                 Toast.makeText(
                     context,
-                    error.message ?: "CSV 파일을 내보내지 못했습니다.",
+                    error.message ?: "Excel 파일을 내보내지 못했습니다.",
                     Toast.LENGTH_LONG,
                 ).show()
             }
@@ -279,6 +293,7 @@ fun Asset_ManagerApp(
     var currentTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var showBudgetAddDialog by remember { mutableStateOf(false) }
     var recordToDelete by remember { mutableStateOf<AssetRecord?>(null) }
     var assetToEdit by remember { mutableStateOf<AssetRecord?>(null) }
 
@@ -290,6 +305,7 @@ fun Asset_ManagerApp(
                     Text(
                         text = when (currentTab) {
                             MainTab.HOME -> "자산 관리"
+                            MainTab.BUDGET -> "가계부"
                             MainTab.STATS -> "통계 및 차트"
                             MainTab.NEWS -> "경제 뉴스"
                             MainTab.SETTINGS -> "설정"
@@ -330,9 +346,12 @@ fun Asset_ManagerApp(
             }
         },
         floatingActionButton = {
-            if (currentTab == MainTab.HOME) {
+            if (currentTab == MainTab.HOME || currentTab == MainTab.BUDGET) {
                 FloatingActionButton(
-                    onClick = { showAddDialog = true },
+                    onClick = {
+                        if (currentTab == MainTab.HOME) showAddDialog = true
+                        else showBudgetAddDialog = true
+                    },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                 ) {
@@ -358,6 +377,17 @@ fun Asset_ManagerApp(
                         onDelete = { record -> recordToDelete = record },
                     )
                 }
+                MainTab.BUDGET -> {
+                    BudgetScreen(
+                        entries = expenseEntries,
+                        assetRecords = allRecords,
+                        showAddDialog = showBudgetAddDialog,
+                        onDismissAddDialog = { showBudgetAddDialog = false },
+                        onAdd = viewModel::addExpenseEntry,
+                        onUpdate = viewModel::updateExpenseEntry,
+                        onDelete = viewModel::deleteExpenseEntry,
+                    )
+                }
                 MainTab.STATS -> {
                     StatsScreen(records = records, allRecords = allRecords)
                 }
@@ -367,9 +397,11 @@ fun Asset_ManagerApp(
                 MainTab.SETTINGS -> {
                     SettingsScreen(
                         records = records,
-                        onExportCsv = ::shareCsvFile,
+                        onExportCsv = ::shareWorkbook,
                         onImportCsv = {
-                            csvImportLauncher.launch(arrayOf("text/*", "application/*"))
+                            workbookImportLauncher.launch(
+                                arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv", "text/*"),
+                            )
                         },
                     )
                 }
@@ -408,31 +440,33 @@ fun Asset_ManagerApp(
                 )
             }
 
-            pendingCsvImport?.let { importedRecords ->
+            pendingWorkbookImport?.let { imported ->
+                val importedCount = imported.assets.size + imported.budget.size
                 AlertDialog(
-                    onDismissRequest = { pendingCsvImport = null },
-                    title = { Text("CSV 데이터 가져오기") },
+                    onDismissRequest = { pendingWorkbookImport = null },
+                    title = { Text("Excel 데이터 가져오기") },
                     text = {
                         Text(
-                            if (importedRecords.isEmpty()) {
+                            if (importedCount == 0) {
                                 "가져올 기록이 없습니다."
                             } else {
-                                "${importedRecords.size}개 기록을 기존 데이터에 추가할까요? 기존 데이터는 유지됩니다. 같은 파일을 다시 가져오면 중복 기록이 생길 수 있습니다."
+                                "자산 ${imported.assets.size}개, 가계부 ${imported.budget.size}개를 기존 데이터에 추가할까요? 기존 데이터는 유지됩니다. 같은 파일을 다시 가져오면 중복 기록이 생길 수 있습니다."
                             },
                         )
                     },
                     confirmButton = {
                         TextButton(
-                            enabled = importedRecords.isNotEmpty(),
+                            enabled = importedCount > 0,
                             onClick = {
-                                viewModel.importRecords(importedRecords)
-                                pendingCsvImport = null
-                                Toast.makeText(context, "CSV 데이터를 가져왔습니다.", Toast.LENGTH_SHORT).show()
+                                viewModel.importRecords(imported.assets)
+                                viewModel.importExpenseEntries(imported.budget)
+                                pendingWorkbookImport = null
+                                Toast.makeText(context, "Excel 데이터를 가져왔습니다.", Toast.LENGTH_SHORT).show()
                             },
                         ) { Text("추가") }
                     },
                     dismissButton = {
-                        TextButton(onClick = { pendingCsvImport = null }) { Text("취소") }
+                        TextButton(onClick = { pendingWorkbookImport = null }) { Text("취소") }
                     },
                 )
             }
@@ -456,7 +490,7 @@ fun AssetRecordList(
         allRecords
             .groupBy { it.category to it.name }
             .mapValues { (_, history) ->
-                history.sortedByDescending { it.date?.time ?: Long.MIN_VALUE }.getOrNull(1)
+                history.sortedWith(compareByDescending<AssetRecord> { it.date?.time ?: Long.MIN_VALUE }.thenByDescending { it.uid }).getOrNull(1)
             }
     }
 
@@ -473,7 +507,7 @@ fun AssetRecordList(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item(key = "home-banner") {
@@ -726,7 +760,7 @@ fun AssetRecordCard(
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = "편집",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(18.dp),
                         )
                     }
@@ -737,7 +771,7 @@ fun AssetRecordCard(
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "삭제",
-                            tint = MaterialTheme.colorScheme.error,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(18.dp),
                         )
                     }
@@ -1687,7 +1721,7 @@ fun StatsScreen(records: List<AssetRecord>, allRecords: List<AssetRecord>) {
                 category to name
             }
             .values
-            .mapNotNull { history -> history.maxByOrNull { it.date?.time ?: Long.MIN_VALUE } }
+            .mapNotNull { history -> history.maxWithOrNull(compareBy<AssetRecord> { it.date?.time ?: Long.MIN_VALUE }.thenBy { it.uid }) }
             .filter { it.value != null }
     }
     val donutTotal = remember(donutRecords) { donutRecords.sumOf { it.value ?: 0 } }
@@ -2850,7 +2884,7 @@ fun SettingsScreen(
                 }
 
                 Text(
-                    text = "전체 기록을 CSV 파일로 공유하거나 파일에서 추가할 수 있어요.",
+                    text = "자산 내역과 가계부를 각각 시트에 담은 Excel 파일로 공유하거나 가져올 수 있어요.",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -2862,17 +2896,17 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f),
                         onClick = onExportCsv,
                     ) {
-                        Text("CSV 공유")
+                        Text("Excel 공유")
                     }
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
                         onClick = onImportCsv,
                     ) {
-                        Text("CSV 가져오기")
+                        Text("Excel 가져오기")
                     }
                 }
                 Text(
-                    text = "CSV 열 형식: category, name, value, date (ISO 8601, 예: 2026-10-06T14:30:00+09:00). 기존 데이터에 추가됩니다.",
+                    text = "Excel 파일에는 ‘자산 내역’과 ‘가계부’ 시트가 포함됩니다. 기존 CSV 파일도 자산 내역 가져오기에 사용할 수 있으며, 가져온 내용은 기존 기록에 추가됩니다.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.outline,
                 )
