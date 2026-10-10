@@ -312,8 +312,10 @@ private fun BudgetEntryDialog(day: Int, entries: List<ExpenseEntry>, assetRecord
     var memo by remember(initialEntry?.id) { mutableStateOf(initialEntry?.memo ?: "") }
     var includeInAssets by remember(initialEntry?.id) { mutableStateOf(initialEntry?.includeInAssets ?: false) }
     var includeInFutureAssets by remember(initialEntry?.id) { mutableStateOf(initialEntry?.includeInFutureAssets ?: false) }
+    var selectedEntryDay by remember(initialEntry?.id, day) { mutableIntStateOf(initialEntry?.day ?: day) }
+    var showEntryDatePicker by remember { mutableStateOf(false) }
     val validAmount = amountText.toLongOrNull()?.takeIf { it > 0 }
-    val date = day.toString()
+    val date = selectedEntryDay.toString()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -346,6 +348,21 @@ private fun BudgetEntryDialog(day: Int, entries: List<ExpenseEntry>, assetRecord
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     entryTypes.forEach { option -> FilterChip(selected = type == option, onClick = { type = option; if (option != "저축") { includeInAssets = false; includeInFutureAssets = false } }, label = { Text(option) }) }
+                }
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = "${date.substring(0, 4)}년 ${date.substring(4, 6)}월 ${date.substring(6, 8)}일",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("날짜") },
+                        trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "날짜 선택") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { showEntryDatePicker = true },
+                    )
                 }
                 ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = it }) {
                     OutlinedTextField(
@@ -381,23 +398,38 @@ private fun BudgetEntryDialog(day: Int, entries: List<ExpenseEntry>, assetRecord
                 }
                 OutlinedTextField(amountText, { amountText = it.filter(Char::isDigit) }, label = { Text("금액") }, suffix = { Text("원") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
                 OutlinedTextField(memo, { memo = it }, label = { Text("메모 (선택)") }, singleLine = true)
-                if (type == "저축") {
+                if (type == "저축" && initialEntry == null) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = includeInAssets, onCheckedChange = { includeInAssets = it; if (!it) includeInFutureAssets = false })
-                            Text("자산에도 저축 금액 더하기", style = MaterialTheme.typography.bodyMedium)
+                            Text("선택일에 저축 금액 더하여 자산 기록", style = MaterialTheme.typography.bodyMedium)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = includeInFutureAssets, enabled = includeInAssets, onCheckedChange = { includeInFutureAssets = it })
-                            Text("이후 자산 기록에도 금액 더하기", style = MaterialTheme.typography.bodyMedium, color = if (includeInAssets) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+                            Text("선택일 이후 모든 자산 기록에 저축 금액 더하기", style = MaterialTheme.typography.bodyMedium, color = if (includeInAssets) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(enabled = category.isNotBlank() && title.isNotBlank() && validAmount != null, onClick = { validAmount?.let { onSave(ExpenseEntry(id = initialEntry?.id ?: 0, day = day, type = type, category = category, title = title.trim(), amount = it, memo = memo.trim(), includeInAssets = type == "저축" && includeInAssets, includeInFutureAssets = type == "저축" && includeInAssets && includeInFutureAssets)) } }) { Text("저장") } },
+        confirmButton = { TextButton(enabled = category.isNotBlank() && title.isNotBlank() && validAmount != null, onClick = { validAmount?.let { onSave(ExpenseEntry(id = initialEntry?.id ?: 0, day = selectedEntryDay, type = type, category = category, title = title.trim(), amount = it, memo = memo.trim(), includeInAssets = type == "저축" && includeInAssets, includeInFutureAssets = type == "저축" && includeInAssets && includeInFutureAssets)) } }) { Text("저장") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
     )
+    if (showEntryDatePicker) {
+        val pickerInitialDate = remember(selectedEntryDay) {
+            Calendar.getInstance().apply {
+                clear()
+                set(selectedEntryDay / 10000, (selectedEntryDay / 100) % 100 - 1, selectedEntryDay % 100)
+            }.time
+        }
+        AssetDatePickerDialog(
+            initialDate = pickerInitialDate,
+            onDismiss = { showEntryDatePicker = false },
+            onDateSelected = { selectedDate ->
+                Calendar.getInstance().apply { time = selectedDate }.let { selectedEntryDay = dayKey(it) }
+            },
+        )
+    }
     if (showAddCategory) {
         AlertDialog(
             onDismissRequest = { showAddCategory = false },

@@ -486,8 +486,49 @@ fun AssetRecordList(
     }
     val currencyFormat = remember { NumberFormat.getNumberInstance(Locale.KOREA) }
     val dateFormat = remember { SimpleDateFormat("yyyy.MM.dd", Locale.KOREA) }
-    val previousRecords = remember(allRecords) {
+    val previousMonthTotal = remember(allRecords) {
+        val cutoff = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            add(Calendar.MILLISECOND, -1)
+        }.timeInMillis
         allRecords
+            .filter { it.date?.time?.let { time -> time <= cutoff } == true }
+            .groupBy { it.category to it.name }
+            .values
+            .mapNotNull { history -> history.maxWithOrNull(compareBy<AssetRecord> { it.date?.time ?: Long.MIN_VALUE }.thenBy { it.uid }) }
+            .sumOf { it.value ?: 0 }
+    }
+    val monthOverMonthChange = totalValue - previousMonthTotal
+    val changeRateFormat = remember {
+        NumberFormat.getPercentInstance(Locale.KOREA).apply {
+            minimumFractionDigits = 1
+            maximumFractionDigits = 1
+        }
+    }
+    val monthOverMonthRate = if (previousMonthTotal == 0) {
+        "—"
+    } else {
+        val rate = monthOverMonthChange.toDouble() / previousMonthTotal
+        (if (rate > 0) "+" else "") + changeRateFormat.format(rate)
+    }
+    val changeColor = when {
+        monthOverMonthChange > 0 -> Color(0xFFC62828)
+        monthOverMonthChange < 0 -> Color(0xFF1976D2)
+        else -> MaterialTheme.colorScheme.onSecondaryContainer
+    }
+    val previousRecords = remember(allRecords) {
+        val todayCutoff = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }.timeInMillis
+        allRecords
+            .filter { it.date == null || it.date.time <= todayCutoff }
             .groupBy { it.category to it.name }
             .mapValues { (_, history) ->
                 history.sortedWith(compareByDescending<AssetRecord> { it.date?.time ?: Long.MIN_VALUE }.thenByDescending { it.uid }).getOrNull(1)
@@ -529,18 +570,28 @@ fun AssetRecordList(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "총 자산",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-                Text(
-                    text = "${currencyFormat.format(totalValue)} 원",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "총 자산",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "${currencyFormat.format(totalValue)}원 ($monthOverMonthRate)",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = changeColor,
+                    )
+                    Text(
+                        text = "전월 대비${if (monthOverMonthChange > 0) "+" else ""}${currencyFormat.format(monthOverMonthChange)}원",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = changeColor,
+                    )
+                }
             }
         }
         }

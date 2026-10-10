@@ -94,7 +94,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Filter to expose only the most recent date record for each (category, name) pair
     val records: StateFlow<List<AssetRecord>> = dao.getAll()
         .map { list ->
-            list.groupBy { (_, category, name) -> category to name }
+            val todayCutoff = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 23)
+                set(Calendar.MINUTE, 59)
+                set(Calendar.SECOND, 59)
+                set(Calendar.MILLISECOND, 999)
+            }.timeInMillis
+            list.filter { record -> record.date == null || record.date.time <= todayCutoff }
+                .groupBy { (_, category, name) -> category to name }
                 .values
                 .mapNotNull { groupList ->
                     groupList.maxWithOrNull(compareBy<AssetRecord> { it.date?.time ?: Long.MIN_VALUE }.thenBy { it.uid })
